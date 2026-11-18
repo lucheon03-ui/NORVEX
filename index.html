@@ -190,8 +190,10 @@ async function showLobby(){
     const c=code.value.trim(); if(!c){err.textContent='초대 코드를 입력해 주세요.';return;}
     const {data,error}=await sb.rpc('join_room',{p_code:c,p_display:name});
     if(error){err.textContent=friendly(error);return;}
-    toast('입장 요청을 보냈어요. GM의 승인을 기다려 주세요.');
-    code.value=''; loadMine(listBox);
+    if(!data || !data.room_id){err.textContent='방 입장 정보를 확인할 수 없어요. 다시 시도해 주세요.';return;}
+    code.value='';
+    toast('방에 입장했어요.');
+    await openRoom(data.room_id);
   };
 
   $app.replaceChildren(h('div',{class:'wrap'},brand(),
@@ -202,7 +204,7 @@ async function showLobby(){
     h('div',{class:'card'},h('h2',{},'새 방 만들기 (내가 GM)'),roomName,
       h('div',{class:'row',style:'margin-top:10px'},h('button',{class:'btn pri',onclick:create},'방 만들기'))),
     h('div',{class:'card'},h('h2',{},'초대 코드로 입장'),code,
-      h('div',{class:'row',style:'margin-top:10px'},h('button',{class:'btn pri',onclick:join},'입장 요청'))),
+      h('div',{class:'row',style:'margin-top:10px'},h('button',{class:'btn pri',onclick:join},'바로 입장'))),
     h('div',{class:'card'},h('h2',{},'GM 권한 복구'),
       h('p',{class:'muted small'},'브라우저를 바꾸거나 기록을 지워 GM 자리를 잃었다면, 방의 초대 코드와 복구 코드로 되찾을 수 있어요.'),
       h('button',{class:'btn',onclick:showReclaim},'복구 코드로 GM 되찾기')),
