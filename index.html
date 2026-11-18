@@ -187,7 +187,7 @@ async function showLobby(){
   };
   const join=async()=>{
     err.textContent='';
-    const c=code.value.trim().toLowerCase(); if(!c){err.textContent='초대 코드를 입력해 주세요.';return;}
+    const c=code.value.trim(); if(!c){err.textContent='초대 코드를 입력해 주세요.';return;}
     const {data,error}=await sb.rpc('join_room',{p_code:c,p_display:name});
     if(error){err.textContent=friendly(error);return;}
     toast('입장 요청을 보냈어요. GM의 승인을 기다려 주세요.');
@@ -271,7 +271,7 @@ function showReclaim(){
       h('button',{class:'btn',onclick:()=>m.remove()},'취소'),
       h('button',{class:'btn pri',onclick:async()=>{
         err.textContent='';
-        const {data,error}=await sb.rpc('reclaim_gm',{p_invite:inv.value.trim().toLowerCase(),p_code:rc.value.trim(),p_display:name});
+        const {data,error}=await sb.rpc('reclaim_gm',{p_invite:inv.value.trim(),p_code:rc.value.trim(),p_display:name});
         if(error){err.textContent=friendly(error);return;}
         if(!data||!data.ok){err.textContent=(data&&data.message)||'복구하지 못했어요.';return;}
         m.remove();
