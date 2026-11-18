@@ -220,10 +220,33 @@ async function loadMine(box){
     const r=rooms[m.room_id];
     if(m.status==='pending') return h('div',{class:'item'},h('span',{class:'t'},'승인 대기 중인 방'),h('span',{class:'tag wait'},'대기'));
     if(m.status==='rejected') return h('div',{class:'item'},h('span',{class:'t'},'입장이 거절된 방'),h('span',{class:'tag'},'거절'));
+    const actions=h('span',{class:'row'},
+      h('button',{class:'btn sm pri',onclick:()=>openRoom(m.room_id)},'입장'),
+      m.role==='gm'?h('button',{class:'btn sm danger',onclick:()=>confirmDeleteRoom(m.room_id,r?r.name:'이 방')},'방 삭제'):null
+    );
     return h('div',{class:'item'},
       h('span',{class:'t'},r?r.name:'(이름 없음)',' ',h('span',{class:'tag '+(m.role==='gm'?'gm':'')},m.role==='gm'?'GM':'플레이어')),
-      h('button',{class:'btn sm pri',onclick:()=>openRoom(m.room_id)},'입장'));
+      actions);
   }));
+}
+
+async function confirmDeleteRoom(roomId,roomName){
+  const modal=h('div',{class:'modal'},h('div',{class:'box'},
+    h('h2',{},'방을 삭제할까요?'),
+    h('p',{class:'small'},'「'+roomName+'」 방을 삭제합니다. 방 참가자와 채팅 기록 등 해당 방의 데이터도 함께 삭제될 수 있으며, 삭제 후에는 되돌릴 수 없어요.'),
+    h('div',{class:'row'},
+      h('button',{class:'btn',onclick:()=>modal.remove()},'취소'),
+      h('button',{class:'btn pri',onclick:async()=>{
+        const buttons=modal.querySelectorAll('button'); buttons.forEach(b=>b.disabled=true);
+        const {data,error}=await sb.rpc('delete_room',{p_room:roomId});
+        if(error){ modal.remove(); toast('방 삭제 실패: '+friendly(error)); return; }
+        modal.remove(); toast('방을 삭제했어요.');
+        const list=document.querySelector('.card .list');
+        if(list) loadMine(list);
+      }},'삭제하기')
+    )
+  ));
+  document.body.append(modal);
 }
 
 /* ---------- 복구 코드 ---------- */
