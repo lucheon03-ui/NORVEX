@@ -249,15 +249,20 @@ button.link:hover { color: var(--brass); background: none; }
 <div id="toast" hidden></div>
 <audio id="bgm" loop></audio>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.97.0/dist/umd/supabase.js"></script>
 <script>
 (function () {
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var roomIdFromLobby = new URLSearchParams(window.location.search).get("room");
+  var SUPABASE_URL = "https://fhbptdhqggyceplsetdg.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_ME8UWQdoymI6-ZooBSn6FA_qXlvrviZ";
+  var cloudClient = null, cloudReady = false, cloudUser = null;
+  var cloudSaveQueue = Promise.resolve(), cloudSaveVersion = 0;
   var roomBanner = $("room-banner");
   if (roomBanner) {
     roomBanner.textContent = roomIdFromLobby
-      ? "로비에서 전달된 방 ID: " + roomIdFromLobby + " · 현재 게임 데이터는 아직 이 브라우저에만 저장되며, 참가자 간 실시간 공유는 다음 연결 단계에서 진행합니다."
+      ? "로비에서 전달된 방 ID: " + roomIdFromLobby + " · 클라우드 저장 연결을 확인하고 있습니다."
       : "프로토타입입니다. 로그인, 실시간 동기화, 서버 권한 보호는 아직 연결되지 않았습니다. 로비에서 방을 연 뒤 '게임 화면 입장'을 눌러 주세요.";
   }
   var SLOTS = ["아침", "점심", "저녁", "새벽"];
@@ -375,11 +380,39 @@ button.link:hover { color: var(--brass); background: none; }
   }
   function save(silent) {
     try {
-      localStorage.setItem("norvex.state", JSON.stringify(state)); localStorage.setItem("norvex.map", mapImg);
+      localStorage.setItem("norvex.state", JSON.stringify(state));
+      localStorage.setItem("norvex.map", mapImg);
+    } catch (e) {
+      toast("이 브라우저의 저장 공간이 부족합니다. 이미지 크기를 줄여 주세요.");
+      return false;
+    }
+    if (!cloudReady || !cloudClient || !roomIdFromLobby || !cloudUser) {
       dirty = false; lastSaved = Date.now(); paintSave();
-      if (!silent) toast("저장했습니다 " + clock(lastSaved));
+      if (!silent) toast("이 기기에 저장했습니다. 방 연결 상태를 확인해 주세요.");
       return true;
-    } catch (e) { toast("저장 공간이 부족합니다. 이미지 크기를 줄여 주세요."); return false; }
+    }
+    var version = ++cloudSaveVersion, snapshot;
+    try { snapshot = JSON.parse(JSON.stringify(state)); }
+    catch (e) { toast("게임 데이터를 정리하지 못해 저장하지 못했습니다."); return false; }
+    $("save-state").textContent = "클라우드 저장 중…";
+    cloudSaveQueue = cloudSaveQueue.then(async function () {
+      var result = await cloudClient.from("game_saves").upsert({
+        room_id: roomIdFromLobby, game_data: snapshot,
+        updated_by: cloudUser.id, updated_at: new Date().toISOString()
+      }, { onConflict: "room_id" });
+      if (result.error) throw result.error;
+      if (version === cloudSaveVersion) {
+        dirty = false; lastSaved = Date.now(); paintSave();
+        if (!silent) toast("클라우드에 저장했습니다 " + clock(lastSaved));
+      }
+    }).catch(function (err) {
+      if (version === cloudSaveVersion) {
+        dirty = true; paintSave(); $("save-state").textContent = "클라우드 저장 실패";
+      }
+      console.error("NORVEX cloud save:", err);
+      toast("클라우드 저장에 실패했습니다: " + (err && err.message ? err.message : "권한 또는 연결을 확인해 주세요."));
+    });
+    return true;
   }
   function markDirty() { dirty = true; if (autosave) save(true); else paintSave(); }
   function commit() { markDirty(); render(); }
@@ -1258,7 +1291,58 @@ button.link:hover { color: var(--brass); background: none; }
       h("p", { class: "soft" }, "BGM 파일은 이 브라우저에 저장되고, 재생은 이 화면에서만 됩니다. 모든 접속자에게 동시에 재생되는 기능은 서버가 있어야 해서 아직 없습니다. 효과음 관리도 아직 없습니다. 괴물 소환 연출은 괴물 탭의 소환 버튼으로 실행합니다."));
   }
 
-  fillRole();  fillRole(); paintTimer(); paintSave(); bgmLoad(); render();
+  async function initCloudSave() {
+    if (!roomIdFromLobby) {
+      roomBanner.textContent = "로비에서 방을 연 뒤 입장해 주세요. 현재는 이 브라우저에만 저장됩니다.";
+      return;
+    }
+    if (!window.supabase || !window.supabase.createClient) {
+      roomBanner.textContent = "Supabase 라이브러리를 불러오지 못했습니다. 인터넷 연결 후 새로고침해 주세요.";
+      return;
+    }
+    try {
+      cloudClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage }
+      });
+      var sessionResult = await cloudClient.auth.getSession();
+      if (sessionResult.error) throw sessionResult.error;
+      var session = sessionResult.data && sessionResult.data.session;
+      if (!session) {
+        var authResult = await cloudClient.auth.signInAnonymously();
+        if (authResult.error) throw authResult.error;
+        session = authResult.data.session;
+      }
+      if (!session || !session.user) throw new Error("로그인 정보를 확인할 수 없습니다.");
+      cloudUser = session.user;
+
+      var loadResult = await cloudClient.from("game_saves")
+        .select("game_data, updated_at").eq("room_id", roomIdFromLobby).maybeSingle();
+      if (loadResult.error) throw loadResult.error;
+
+      if (loadResult.data && loadResult.data.game_data && loadResult.data.game_data.players) {
+        state = loadResult.data.game_data;
+        try { localStorage.setItem("norvex.state", JSON.stringify(state)); } catch (e) {}
+        dirty = false;
+        lastSaved = loadResult.data.updated_at ? new Date(loadResult.data.updated_at).getTime() : Date.now();
+        cloudReady = true;
+        roomBanner.textContent = "클라우드 저장 연결 완료 · 서버에 저장된 세션을 불러왔습니다. 지도 이미지와 BGM은 아직 이 기기에만 저장됩니다.";
+      } else {
+        cloudReady = true;
+        roomBanner.textContent = "클라우드 저장 연결 완료 · 현재 게임 상태를 첫 저장본으로 등록합니다. 지도 이미지와 BGM은 아직 이 기기에만 저장됩니다.";
+        save(true);
+      }
+    } catch (err) {
+      cloudReady = false;
+      roomBanner.textContent = "클라우드 저장 연결 실패 · " + (err && err.message ? err.message : "로그인, 방 참가 승인, game_saves 권한을 확인해 주세요.") + " · 로컬 저장은 계속 사용할 수 있습니다.";
+      console.error("NORVEX cloud initialization:", err);
+      toast("클라우드 연결에 실패했습니다. 로컬 저장은 유지됩니다.");
+    }
+  }
+
+  fillRole(); fillRole();
+  initCloudSave().then(function () {
+    paintTimer(); paintSave(); bgmLoad(); render();
+  });
 })();
 </script>
 </body>
