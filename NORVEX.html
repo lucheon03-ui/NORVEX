@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>NORVEX</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: 상단 헤더 / 좌 캐릭터 · 중앙 지도+행동 · 우 자료+인벤토리 / 하단 채팅. 아침/밤 테마 전환 */
+:root {
+  --bg: #050805; --panel: #0b120b; --panel2: #111d11; --line: #285528;
+  --ink: #c7ffc7; --soft: #86b886; --accent: #39ff14; --accent-dim: #173817;
+  --brass: #d7ff45; --danger: #ff7168; --danger-dim: #4b1717;
+  --hover: #245b24; --brass-bg: #343d0b; --brass-ink: #efffa8; --faint: #719671; --npc: #c1a5ff;
+  --warn-bg: #202407; --warn-ink: #eaff91; --stripe1: #091109; --stripe2: #0d170d; --mapbg: #050a05;
+  --font: "IBM Plex Sans KR", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+/* 아침 모드: 흰 배경과 검은 글자. 호스트의 data-theme과 겹치지 않도록 data-mode 사용 */
+:root[data-mode="day"] {
+  --bg: #ffffff; --panel: #ffffff; --panel2: #f3f5f3; --line: #c9d0c9;
+  --ink: #111511; --soft: #414a41; --accent: #176b2c; --accent-dim: #e0f1e3;
+  --brass: #8a5b00; --danger: #bd2e25; --danger-dim: #fbe5e2;
+  --hover: #d3ead7; --brass-bg: #fff0c7; --brass-ink: #533700; --faint: #657165; --npc: #6946a8;
+  --warn-bg: #fff7dc; --warn-ink: #5c4300; --stripe1: #f7f9f7; --stripe2: #edf1ed; --mapbg: #f5f7f5;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.6;
+  padding-block: 10px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1, h2, h3, h4 { margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 15px; } h3 { font-size: 13px; letter-spacing: .04em; color: var(--accent); }
+p { margin: 0; }
+button {
+  font: inherit; cursor: pointer; border-radius: 4px; padding: 6px 12px; font-weight: 500;
+  background: var(--accent-dim); color: var(--ink); border: 1px solid var(--accent);
+}
+button:hover:not(:disabled) { background: var(--hover); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.ghost { background: transparent; border-color: var(--line); color: var(--soft); }
+button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); background: transparent; }
+button.danger { background: var(--danger-dim); border-color: var(--danger); }
+button.brass { background: var(--brass-bg); border-color: var(--brass); color: var(--brass-ink); }
+button.sm { padding: 2px 8px; font-size: 12px; }
+input, select, textarea {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 4px; padding: 5px 8px; min-width: 0; width: 100%;
+}
+input[type="checkbox"] { width: auto; }
+input[type="file"] { padding: 3px; }
+textarea { resize: vertical; min-height: 64px; }
+label { display: flex; flex-direction: column; gap: 3px; color: var(--soft); font-size: 12px; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.mono { font-family: var(--mono); }
+.soft { color: var(--soft); }
+body[data-role="player"] .gm-only { display: none !important; }
+
+/* 헤더 */
+.top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.logo { font-family: var(--mono); font-weight: 700; letter-spacing: .3em; font-size: 18px; color: var(--accent); }
+.clock { font-family: var(--mono); color: var(--brass); }
+.top .grow { flex: 1 1 20px; }
+.top .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.top select { width: auto; }
+.top input[type="range"] { width: 80px; padding: 0; }
+.banner { margin-top: 8px; padding: 6px 12px; border: 1px dashed var(--brass); border-radius: 4px; color: var(--warn-ink); background: var(--warn-bg); font-size: 12px; }
+
+/* 본문 그리드 */
+.ztable { min-width: 0; }
+.ztable thead { display: none; }
+.ztable tr { display: block; padding: 6px 0; border-top: 1px solid var(--line); }
+.ztable tr:first-child { border-top: 0; }
+.ztable td { display: block; border: 0; padding: 1px 0; }
+.ztable td[data-l]::before { content: attr(data-l) " · "; color: var(--soft); }
+.grid { display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px; gap: 10px; margin-top: 10px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card > .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.row > * { min-width: 0; }
+.tag { display: inline-block; padding: 0 8px; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; color: var(--soft); }
+.tag.warn { border-color: var(--brass); color: var(--brass); }
+.tag.bad { border-color: var(--danger); color: var(--danger); }
+.tag.ok { border-color: var(--accent); color: var(--accent); }
+
+/* 캐릭터 카드 */
+.pc { display: grid; grid-template-columns: 48px 1fr; gap: 4px 10px; padding: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; cursor: pointer; }
+.pc.me { border-color: var(--accent); }
+.pc:hover { border-color: var(--brass); }
+.pc .ph { width: 48px; height: 48px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); display: grid; place-items: center; font-family: var(--mono); color: var(--accent); overflow: hidden; }
+.pc .ph img { width: 100%; height: 100%; object-fit: cover; }
+.pc .nm { font-weight: 700; display: flex; justify-content: space-between; gap: 6px; }
+.pips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 10px; grid-column: 1 / -1; }
+.pip { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--soft); }
+.pip i { display: inline-flex; gap: 2px; } .pip b { width: 7px; height: 7px; background: var(--line); display: block; }
+.pip b.on { background: var(--accent); }
+.pcfoot { grid-column: 1 / -1; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.pcfoot select { width: auto; font-size: 11px; padding: 1px 4px; }
+
+/* 지도 */
+.mapwrap { border: 1px solid var(--line); border-radius: 5px; background: var(--mapbg); overflow: auto; max-height: 560px; }
+.mapwrap img { display: block; max-width: none; }
+.stage { position: relative; line-height: 0; }
+.stage img { width: 100%; }
+.mdot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; line-height: 1.2; touch-action: none; user-select: none; }
+.mdot.drag { cursor: grab; } .mdot.drag:active { cursor: grabbing; }
+.stage.empty { aspect-ratio: 16 / 9; min-height: 240px; display: grid; place-items: center; background-color: var(--stripe1); background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 40px 40px; }
+.hintmap { line-height: 1.5; color: var(--soft); }
+.tokens { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.mdot img { width: var(--tk, 44px); height: var(--tk, 44px); object-fit: contain; pointer-events: none; }
+.mdot .mi { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent); display: grid; place-items: center; font-family: var(--mono); }
+.mdot.npc .mi { background: var(--panel2); border-color: var(--npc); color: var(--npc); border-radius: 6px; }
+.mdot.npc img { border-radius: 6px; outline: 2px solid var(--npc); outline-offset: 1px; }
+.mdot.npc .ml { color: var(--npc); }
+.mdot.off { opacity: .45; }
+.mdot .ml { font-size: 11px; background: rgba(0, 0, 0, .7); padding: 0 5px; border-radius: 3px; margin-top: 2px; white-space: nowrap; }
+.zonemap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 10px; min-height: 200px; }
+.zbox { border: 1px solid var(--line); border-radius: 4px; padding: 8px; min-height: 80px; display: flex; flex-direction: column; gap: 6px; background: repeating-linear-gradient(135deg, var(--stripe1), var(--stripe1) 8px, var(--stripe2) 8px, var(--stripe2) 16px); }
+.zbox.locked { border-color: var(--danger); } .zbox.fog { opacity: .55; border-style: dashed; }
+.zbox .zn { font-weight: 700; font-size: 12px; }
+.dots { display: flex; gap: 4px; flex-wrap: wrap; }
+.dot { width: 22px; height: 22px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent); display: grid; place-items: center; font-size: 10px; font-family: var(--mono); }
+.dot.mon { background: var(--danger-dim); border-color: var(--danger); }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 480px; }
+th, td { text-align: left; padding: 5px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+th { color: var(--soft); font-weight: 500; border-top: 0; }
+
+/* 판정 */
+.roll { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 10px; border: 1px dashed var(--line); border-radius: 5px; }
+.roll .big { font-family: var(--font); font-size: 28px; font-weight: 700; line-height: 1.1; min-width: 96px; text-align: center; }
+.roll .big.ok { color: var(--accent); } .roll .big.bad { color: var(--danger); }
+
+/* 목록 */
+.list { display: flex; flex-direction: column; gap: 4px; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; }
+.item button.link { background: none; border: 0; color: var(--ink); text-align: left; padding: 0; font-weight: 500; }
+.item button.link:hover { color: var(--brass); }
+.slots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.slot { min-height: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel2); font-size: 12px; overflow-wrap: anywhere; }
+.slot.empty { color: var(--faint); border-style: dashed; }
+
+/* 채팅 */
+.chatlog { height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; padding: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
+.msg { display: flex; gap: 8px; align-items: flex-start; overflow-wrap: anywhere; }
+.msg time { font-family: var(--mono); font-size: 11px; color: var(--faint); flex: none; }
+.msg .who { font-weight: 700; flex: none; }
+.msg.gm .who { color: var(--brass); } .msg.npc .who { color: var(--npc); } .msg.system { color: var(--soft); }
+.msg.dice, .msg.investigate { color: var(--accent); } .msg.event { color: var(--danger); font-weight: 700; }
+.msg.whisper { font-style: italic; opacity: .9; }
+.chatin { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; }
+.chatin select { width: auto; max-width: 170px; }
+
+/* 모달 */
+#modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: start center; padding: 24px 12px; overflow-y: auto; }
+.mback { position: fixed; inset: 0; background: rgba(2, 6, 4, .75); }
+.mbox { position: relative; width: min(100%, 640px); background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; }
+.mbox.wide { width: min(100%, 940px); }
+.mhead { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.mbody { padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button { background: transparent; border-color: var(--line); color: var(--soft); }
+.tabs button[aria-pressed="true"] { background: var(--accent-dim); color: var(--ink); border-color: var(--accent); }
+.f2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.skills { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 2px 8px; }
+.skills label { flex-direction: row; align-items: center; gap: 4px; color: var(--ink); }
+.err { color: var(--danger); min-height: 1.4em; }
+
+button.link { background: none; border: 0; color: var(--ink); text-align: left; padding: 0; font-weight: 500; }
+button.link:hover { color: var(--brass); background: none; }
+.slot { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.av { width: 30px; height: 30px; flex: none; border-radius: 50%; overflow: hidden; background: var(--accent-dim); border: 1px solid var(--accent); display: grid; place-items: center; font-size: 11px; font-family: var(--mono); }
+.av img { width: 100%; height: 100%; object-fit: cover; }
+.av.gmav { background: var(--brass-bg); border-color: var(--brass); color: var(--brass); }
+.av.none { border-color: transparent; background: none; }
+.msg > span:not(.av) { padding-top: 5px; }
+/* 연출 */
+#fx { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: #000; color: #fff; text-align: center; padding: 20px; }
+#fx .fxin { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+#fx img { max-width: min(80vw, 420px); max-height: 50vh; }
+#fx h2 { font-size: 34px; color: var(--danger); }
+#fx.shake .fxin { animation: shake .5s 2; }
+@keyframes shake { 0%,100% { transform: translate(0); } 20% { transform: translate(-8px, 3px); } 40% { transform: translate(7px, -4px); } 60% { transform: translate(-5px, -3px); } 80% { transform: translate(6px, 4px); } }
+#toast { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 16px; z-index: 100; background: var(--panel2); border: 1px solid var(--accent); padding: 8px 14px; border-radius: 4px; }
+
+@media (max-width: 1100px) { .grid { grid-template-columns: 250px minmax(0, 1fr); } .grid > .col:last-child { grid-column: 1 / -1; } }
+@media (max-width: 720px) { .grid { grid-template-columns: minmax(0, 1fr); } .chatin { grid-template-columns: 1fr 1fr; } .chatin input { grid-column: 1 / -1; } .zonemap { grid-template-columns: repeat(2, minmax(0, 1fr)); } #maincol { order: -1; } }
+@media (prefers-reduced-motion: reduce) { #fx.shake .fxin { animation: none; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="logo">NORVEX</span>
+  <span class="clock" id="clock"></span>
+  <span class="grow"></span>
+  <div class="group">
+    <label style="flex-direction:row;align-items:center;gap:6px">보는 화면
+      <select id="role" aria-label="시연용 역할 전환"></select>
+    </label>
+    <span class="tag warn" id="rolebadge"></span>
+  </div>
+  <div class="group">
+    <select id="bgm-sel" aria-label="BGM 선택" style="width:auto;max-width:150px"></select>
+    <button class="ghost sm" id="bgm-btn" type="button">BGM 재생</button>
+    <input id="bgm-vol" type="range" min="0" max="100" value="40" aria-label="BGM 음량">
+  </div>
+  <div class="group">
+    <span class="mono" id="timer">00:00</span>
+    <button class="ghost sm" id="timer-btn" type="button">시작</button>
+    <button class="ghost sm" id="timer-rst" type="button">초기화</button>
+  </div>
+  <div class="group">
+    <button class="ghost sm" id="mode-btn" type="button">아침 모드</button>
+    <button class="brass sm" id="save-btn" type="button">세션 저장</button>
+    <span class="soft mono" id="save-state" aria-live="polite"></span>
+    <label style="flex-direction:row;align-items:center;gap:4px"><input type="checkbox" id="auto-save"> 자동 저장</label>
+    <button class="ghost sm" id="set-btn" type="button">설정</button>
+    <button class="brass sm gm-only" id="next-btn" type="button">다음 시간대</button>
+    <button class="brass sm gm-only" id="gm-btn" type="button">GM 관리</button>
+  </div>
+</div>
+<p class="banner" id="room-banner">프로토타입입니다. 로그인, 실시간 동기화, 서버 권한 보호는 아직 연결되지 않았습니다. 게임 데이터는 현재 이 브라우저에만 저장됩니다.</p>
+
+<div class="grid">
+  <div class="col" id="left"></div>
+  <div class="col" id="maincol">
+  <div class="col" id="center"></div>
+<div class="card">
+  <div class="head"><h2>채팅</h2><span class="soft" id="chatscope"></span></div>
+  <div class="chatlog" id="chatlog" aria-live="polite"></div>
+  <form class="chatin" id="chatform">
+    <select id="c-speaker" aria-label="발언자"></select>
+    <select id="c-to" aria-label="공개 대상"></select>
+    <input id="c-text" type="text" placeholder="메시지를 입력하세요" autocomplete="off">
+    <button type="submit">전송</button>
+  </form>
+</div>
+  </div>
+  <div class="col" id="right"></div>
+</div>
+
+<div id="modal" hidden></div>
+<div id="fx" hidden></div>
+<div id="toast" hidden></div>
+<audio id="bgm" loop></audio>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var roomIdFromLobby = new URLSearchParams(window.location.search).get("room");
+  var roomBanner = $("room-banner");
+  if (roomBanner) {
+    roomBanner.textContent = roomIdFromLobby
+      ? "로비에서 전달된 방 ID: " + roomIdFromLobby + " · 현재 게임 데이터는 아직 이 브라우저에만 저장되며, 참가자 간 실시간 공유는 다음 연결 단계에서 진행합니다."
+      : "프로토타입입니다. 로그인, 실시간 동기화, 서버 권한 보호는 아직 연결되지 않았습니다. 로비에서 방을 연 뒤 '게임 화면 입장'을 눌러 주세요.";
+  }
+  var SLOTS = ["아침", "점심", "저녁", "새벽"];
+  var STATS = [["str", "힘"], ["int", "지능"], ["spd", "스피드"], ["rea", "이성"]];
+  var SKILLS = ["회계","인류학","감정(분석)","고고학","매혹","오르기","컴퓨터 사용","재력","변장","회피","자동차 운전","전기 수리","전자기기","말재주","응급처치","역사","위협","도약","법률","자료조사","듣기","열쇠공","기계수리","의료","자연","항법","오컬트","중장비 조작","설득","정신분석","심리학","승마","손놀림","관찰력","은밀행동","수영","사격","추적","손재주","근접전투"];
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function h(tag, props) {
+    var e = document.createElement(tag), kids = Array.prototype.slice.call(arguments, 2), val;
+    for (var k in (props || {})) {
+      var v = props[k]; if (v == null || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k.indexOf("on") === 0) e.addEventListener(k.slice(2), v);
+      else if (k === "value") val = v;
+      else e.setAttribute(k, v === true ? "" : v);
+    }
+    (function add(list) { list.forEach(function (c) {
+      if (c == null || c === false) return;
+      if (Array.isArray(c)) return add(c);
+      e.append(c.nodeType ? c : document.createTextNode(String(c)));
+    }); })(kids);
+    if (val != null) e.value = val;
+    return e;
+  }
+  function uid() { return Math.random().toString(36).slice(2, 9); }
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function clock(ts) { var d = new Date(ts); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+
+  /* ---------- 상태 ---------- */
+  function defaultItems() {
+    return [
+      { id: "i1", name: "낡은 열쇠", desc: "녹슨 철제 열쇠", detail: "차단 구역의 문에 맞을 것 같다.", img: "", zone: "z2", chance: 30, unique: true },
+      { id: "i2", name: "손전등", desc: "배터리가 반쯤 남은 손전등", detail: "어두운 곳을 조사할 때 쓸 수 있다.", img: "", zone: "z1", chance: 40, unique: true },
+      { id: "i3", name: "응급 키트", desc: "붕대와 소독약이 든 작은 가방", detail: "상처를 응급 처치할 수 있다.", img: "", zone: "z5", chance: 25, unique: false }
+    ];
+  }
+  function seed() {
+    var names = ["서도현", "한유진", "문태오", "엄지수"];
+    var pcs = names.map(function (n, i) {
+      return {
+        id: "p" + (i + 1), name: n, age: 24 + i * 3, height: 168 + i * 4, weight: 58 + i * 5, photo: "",
+        stats: { str: [3, 2, 5, 1][i], int: [4, 5, 2, 4][i], spd: [4, 4, 4, 5][i], rea: [5, 5, 5, 5][i] },
+        skills: [[33, 19, 14, 20], [14, 29, 30, 16], [5, 36, 39, 22], [34, 26, 20, 7]][i].map(function (x) { return SKILLS[x]; }),
+        created: true, hp: 100, san: 100, status: [], zone: "z1", inv: [null, null, null, null, null, null, null, null], inves: 4,
+        dot: "", mx: 15 + i * 18, my: 35 + (i % 2) * 25
+      };
+    });
+    var probs = {}; pcs.forEach(function (p) { probs[p.id] = { inv: 50, str: 50, int: 50, spd: 50, rea: 50, s0: 50, s1: 50, s2: 50, s3: 50 }; });
+    return {
+      day: 1, slot: 0, players: pcs, probs: probs, crit: null, fumble: null,
+      zones: [
+        { id: "z1", name: "폐허 광장", lock: null, hidden: false, open: true },
+        { id: "z2", name: "폐건물", lock: null, hidden: false, open: true },
+        { id: "z3", name: "폐역", lock: null, hidden: false, open: true },
+        { id: "z4", name: "연구소", lock: { type: "password", value: "0417" }, hidden: true, open: true },
+        { id: "z5", name: "창고", lock: null, hidden: false, open: true },
+        { id: "z6", name: "차단 구역", lock: { type: "key", value: "낡은 열쇠", itemId: "i1" }, hidden: true, open: false }
+      ],
+      monsters: [{ id: "m1", name: "그림자 거주자", hp: 100, atk: 12, ability: "빛을 피해 움직인다", zone: "z2", summoned: false, img: "" }],
+      npcs: [
+        { id: "n1", name: "관리인 노인", desc: "폐건물 앞을 지키는 정체불명의 노인.", zone: "z1", visible: true, img: "" },
+        { id: "n2", name: "역무원", desc: "폐역에 홀로 남아 있는 제복 차림의 남자.", zone: "z3", visible: true, img: "" },
+        { id: "n3", name: "생존한 연구원", desc: "연구소에서 도망쳐 나온 듯한 여자.", zone: "z5", visible: true, img: "" }
+      ], v: 2,
+      materials: [
+        { id: "a1", title: "현장 사진 (예시)", desc: "광장 바닥에 남은 발자국 사진", detail: "오래된 발자국이 폐건물 쪽으로 이어진다.", zone: "z1", mode: "auto", cond: "success", visibleTo: "all", found: [], item: "", img: "" },
+        { id: "a2", title: "연구 기록 (예시)", desc: "찢어진 연구 노트", detail: "마지막 쪽에 '0417'이라는 숫자가 적혀 있다.", zone: "z2", mode: "manual", cond: "", visibleTo: "all", found: [], item: "낡은 열쇠", img: "" }
+      ],
+      unlock: [], notes: {}, talks: [], items: defaultItems(),
+      chat: [{ id: uid(), ts: Date.now(), day: 1, slot: 0, type: "system", author: "시스템", text: "세션이 시작되었습니다. 시연용 샘플 데이터입니다." }]
+    };
+  }
+  var state, mapImg = "", ui = { role: "p1", gmOk: false, speaker: "gm", tab: "char", gmPid: "p1", key: "str", target: "p1", zoom: 1, mi: "p1", note: { day: 1, slot: 0, pid: "p1" }, modal: null };
+  try { state = JSON.parse(localStorage.getItem("norvex.state") || "null"); mapImg = localStorage.getItem("norvex.map") || ""; } catch (e) {}
+  if (!state || !state.players) state = seed();
+  if (!state.items) state.items = defaultItems();
+  state.npcs.forEach(function (n, i) {
+    if (n.mx == null) { n.mx = 20 + (i % 4) * 20; n.my = 82; }
+    if (n.dot == null) n.dot = "";
+    if (n.onmap == null) n.onmap = true;
+  });
+  state.players.forEach(function (p) {
+    var pr = state.probs[p.id] = state.probs[p.id] || {};
+    ["inv", "str", "int", "spd", "rea", "s0", "s1", "s2", "s3"].forEach(function (k) { if (pr[k] == null) pr[k] = 50; });
+  });
+  state.chat.forEach(function (m) { if (typeof m.text === "string") m.text = m.text.replace(/\s*\/\s*주사위\s*\d+/, ""); });
+  if (state.notes) Object.keys(state.notes).forEach(function (pid) { Object.keys(state.notes[pid] || {}).forEach(function (k) { state.notes[pid][k] = String(state.notes[pid][k]).replace(/\s*\/\s*주사위\s*\d+/g, ""); }); });
+  state.zones.forEach(function (z) {
+    if (z.lock && z.lock.type === "key" && z.lock.itemId == null) {
+      var it = state.items.filter(function (x) { return x.name === z.lock.value; })[0]; z.lock.itemId = it ? it.id : "";
+    }
+  });
+  state.players.forEach(function (p) { p.inv = p.inv.map(function (x) { return typeof x === "string" ? { name: x } : x; }); });
+  state.players.forEach(function (p, i) {
+    if (p.mx == null) { p.mx = 15 + i * 18; p.my = 35 + (i % 2) * 25; }
+    if (p.dot == null) p.dot = "";
+  });
+  if (!state.v) {
+    state.v = 2;
+    if (state.npcs.length < 3) {
+      var have = state.npcs.map(function (n) { return n.name; });
+      [{ id: "n2", name: "역무원", desc: "폐역에 홀로 남아 있는 제복 차림의 남자.", zone: "z3", visible: true, img: "" },
+       { id: "n3", name: "생존한 연구원", desc: "연구소에서 도망쳐 나온 듯한 여자.", zone: "z5", visible: true, img: "" }].forEach(function (n) {
+        if (have.indexOf(n.name) < 0 && state.npcs.length < 3 && state.zones.some(function (z) { return z.id === n.zone; })) state.npcs.push(n);
+      });
+    }
+  }
+
+  var dirty = false, autosave = false, lastSaved = null;
+  try { autosave = localStorage.getItem("norvex.auto") === "1"; } catch (e) {}
+  function paintSave() {
+    $("save-btn").textContent = dirty ? "세션 저장 ●" : "세션 저장";
+    $("save-state").textContent = dirty ? "저장 안 됨" : (lastSaved ? "저장됨 " + clock(lastSaved) : "저장됨");
+    $("auto-save").checked = autosave;
+  }
+  function save(silent) {
+    try {
+      localStorage.setItem("norvex.state", JSON.stringify(state)); localStorage.setItem("norvex.map", mapImg);
+      dirty = false; lastSaved = Date.now(); paintSave();
+      if (!silent) toast("저장했습니다 " + clock(lastSaved));
+      return true;
+    } catch (e) { toast("저장 공간이 부족합니다. 이미지 크기를 줄여 주세요."); return false; }
+  }
+  function markDirty() { dirty = true; if (autosave) save(true); else paintSave(); }
+  function commit() { markDirty(); render(); }
+  function toast(t) { var el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2200); }
+  function isGM() { return ui.role === "GM"; }
+  function me() { return state.players.filter(function (p) { return p.id === ui.role; })[0]; }
+  function P(id) { return state.players.filter(function (p) { return p.id === id; })[0]; }
+  function Z(id) { return state.zones.filter(function (z) { return z.id === id; })[0]; }
+  function zname(id) { var z = Z(id); return z ? z.name : "-"; }
+  function say(type, author, text, extra) {
+    var m = { id: uid(), ts: Date.now(), day: state.day, slot: state.slot, type: type, author: author, text: text };
+    for (var k in (extra || {})) m[k] = extra[k];
+    state.chat.push(m); return m;
+  }
+  var MAPOPT = { max: 1800, type: "image/jpeg", q: .85, limit: 12000000 };
+  var TOKOPT = { max: 256, type: "image/png", limit: 8000000 };
+  var PHOTOOPT = { max: 480, type: "image/jpeg", q: .85, limit: 8000000 };
+  function readImg(file, cb, opt) {
+    if (!file) return;
+    var lim = (opt && opt.limit) || 1500000;
+    if (file.size > lim) { toast("이미지는 " + (Math.round(lim / 100000) / 10) + "MB 이하만 쓸 수 있습니다."); return; }
+    var r = new FileReader();
+    r.onload = function () {
+      if (!opt || !opt.max) { cb(r.result); return; }
+      var im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, opt.max / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+        var g = c.getContext("2d");
+        if (opt.type === "image/jpeg") { g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); }
+        g.drawImage(im, 0, 0, c.width, c.height);
+        cb(c.toDataURL(opt.type || "image/png", opt.q || .85));
+      };
+      im.onerror = function () { toast("이미지를 읽을 수 없습니다."); };
+      im.src = r.result;
+    };
+    r.readAsDataURL(file);
+  }
+  var PROB_KEYS = ["inv", "str", "int", "spd", "rea", "s0", "s1", "s2", "s3"];
+  function probLabel(p, key) {
+    if (/^s[0-3]$/.test(key)) return "스킬 " + (+key.slice(1) + 1) + " · " + (p.skills[+key.slice(1)] || "미선택");
+    return abilityLabel(p, key);
+  }
+  function abilityLabel(p, key) {
+    if (key === "inv") return "조사";
+    var s = STATS.filter(function (x) { return x[0] === key; })[0];
+    return s ? s[1] : (p.skills[parseInt(key.slice(1), 10)] || key);
+  }
+
+  /* ---------- 판정 ---------- */
+  function doRoll(pid, key, investigate) {
+    var p = P(pid); if (!p) return;
+    if (investigate && !isGM() && p.inves <= 0) { toast("이번 시간대의 조사 횟수를 모두 썼습니다."); return; }
+    var prob = state.probs[pid][key], roll = 1 + Math.floor(Math.random() * 100), ok = roll <= prob;
+    var tag = ok ? "성공" : "실패";
+    if (state.crit != null && roll <= state.crit) tag = "크리티컬";
+    if (state.fumble != null && roll >= state.fumble) tag = "대실패";
+    var label = abilityLabel(p, key);
+    ui.last = { name: p.name, label: label, roll: roll, tag: tag, ok: ok };
+    say(investigate ? "investigate" : "dice", p.name, (investigate ? "조사 / " + tag : "판정: " + label + " / " + tag), { authorId: pid });
+    if (investigate) {
+      if (!isGM()) p.inves -= 1;
+      p.status.forEach(function (s) { say("system", "시스템", p.name + "의 상태이상 '" + s + "' 적용 시점입니다. 효과는 GM이 직접 처리합니다.", { to: "gm" }); });
+      state.materials.forEach(function (m) {
+        if (m.zone !== p.zone || m.mode !== "auto" || m.found.indexOf(pid) >= 0) return;
+        if (m.visibleTo !== "all" && m.visibleTo !== pid) return;
+        if (m.cond === "success" && !ok) return;
+        if (m.cond === "enter") return;
+        discover(m, pid);
+      });
+      rollItems(p);
+    }
+    commit();
+  }
+  function discover(m, pid) {
+    if (m.found.indexOf(pid) < 0) m.found.push(pid);
+    var p = P(pid), note = "";
+    if (m.item) {
+      var i = p.inv.indexOf(null);
+      if (i >= 0) { p.inv[i] = { name: m.item }; note = " (아이템 '" + m.item + "' 획득)"; } else note = " (인벤토리가 가득 차 아이템은 받지 못했습니다)";
+    }
+    say("investigate", "시스템", p.name + " 자료 발견: " + m.title + note, { to: pid });
+  }
+  function moveTo(pid, zid) {
+    var p = P(pid), z = Z(zid); p.zone = zid;
+    say("system", "시스템", p.name + "이(가) " + z.name + "(으)로 이동했습니다.", { to: "gm" });
+    state.materials.forEach(function (m) {
+      if (m.zone === zid && m.mode === "auto" && m.cond === "enter" && m.found.indexOf(pid) < 0 && (m.visibleTo === "all" || m.visibleTo === pid)) discover(m, pid);
+    });
+    state.monsters.forEach(function (m) { if (m.summoned && m.zone === zid) say("event", "시스템", p.name + "이(가) 괴물 '" + m.name + "'이(가) 있는 구역에 진입했습니다."); });
+    commit();
+  }
+  function nextSlot() {
+    state.slot += 1;
+    if (state.slot > 3) { state.slot = 0; state.day += 1; }
+    state.players.forEach(function (p) { p.inves = 4; });
+    say("system", "시스템", state.day + "일차 " + SLOTS[state.slot] + "이(가) 되었습니다. 모든 플레이어의 조사 횟수가 4회로 초기화되었습니다.");
+    commit();
+  }
+  function visible(m) {
+    if (isGM()) return true;
+    return !m.to || m.authorId === ui.role || m.to === ui.role;
+  }
+
+  /* ---------- 렌더 ---------- */
+  function render() {
+    document.body.dataset.role = isGM() ? "gm" : "player";
+    $("clock").textContent = state.day + "일차 · " + SLOTS[state.slot];
+    $("rolebadge").textContent = isGM() ? "GM" : "플레이어";
+    renderLeft(); renderRight(); renderCenter(); renderChat();
+  }
+
+  function pips(n) { var i = h("i", {}); for (var k = 0; k < 5; k++) i.append(h("b", { class: k < n ? "on" : "" })); return i; }
+
+  function renderLeft() {
+    var box = $("left"); box.replaceChildren();
+    var card = h("div", { class: "card" }, h("div", { class: "head" }, h("h3", {}, "현장 요원")));
+    state.players.forEach(function (p) {
+      var pc = h("div", { class: "pc" + (p.id === ui.role ? " me" : ""), tabindex: 0, role: "button", onclick: function () { openProfile(p.id); }, onkeydown: function (e) { if (e.key === "Enter") openProfile(p.id); } },
+        h("div", { class: "ph" }, p.photo ? h("img", { src: p.photo, alt: p.name }) : p.name.slice(0, 1)),
+        h("div", {}, h("div", { class: "nm" }, h("span", {}, p.name, p.id === ui.role ? " (나)" : ""), h("span", { class: "tag" }, zname(p.zone))),
+          h("div", { class: "soft" }, p.created ? p.age + "세 · " + p.height + "cm · " + p.weight + "kg" : "프로필 미작성")),
+        h("div", { class: "pips" }, STATS.map(function (s) { return h("div", { class: "pip" }, s[1], pips(p.stats[s[0]])); })),
+        h("div", { class: "pcfoot" },
+          p.status.map(function (s) { return h("span", { class: "tag bad" }, s); }),
+          (isGM() || p.id === ui.role) ? h("span", { class: "tag ok" }, isGM() ? "조사 제한 없음(GM)" : "조사 " + p.inves + "/4") : null,
+          isGM() ? h("span", { class: "tag mono" }, "HP " + p.hp + " · 이성 " + p.san) : null));
+      if (isGM()) {
+        var sel = h("select", { "aria-label": p.name + " 위치", onclick: function (e) { e.stopPropagation(); }, onchange: function () { moveTo(p.id, sel.value); }, value: p.zone },
+          state.zones.map(function (z) { return h("option", { value: z.id }, z.name); }));
+        pc.querySelector(".pcfoot").append(sel,
+          fileBtn(p.photo ? "사진 변경" : "사진 추가", function (d) { p.photo = d; commit(); toast(p.name + " 사진을 바꿨습니다."); }, PHOTOOPT),
+          fileBtn(p.dot ? "도트 변경" : "도트 추가", function (d) { p.dot = d; commit(); toast(p.name + " 지도 도트를 바꿨습니다."); }, TOKOPT));
+      }
+      card.append(pc);
+    });
+    box.append(card);
+  }
+
+  function npcOnMap() { return state.npcs.filter(function (n) { return isGM() || (n.visible && n.onmap !== false); }); }
+  function mapDot(p, stage, kind) {
+    var isNpc = kind === "npc", pic = p.dot || (isNpc ? p.img : "");
+    var el = h("div", { class: "mdot" + (isGM() ? " drag" : "") + (isNpc ? " npc" : "") + (isNpc && (!p.visible || p.onmap === false) ? " off" : ""), style: "left:" + p.mx + "%;top:" + p.my + "%", title: p.name + (isNpc ? " (NPC)" : "") + (isGM() ? " (끌어서 이동)" : ""), tabindex: isGM() ? 0 : null, role: isGM() ? "slider" : null, "aria-label": p.name + (isNpc ? " NPC" : "") + " 지도 위치" },
+      pic ? h("img", { src: pic, alt: p.name }) : h("span", { class: "mi" }, p.name.slice(0, 1)), h("span", { class: "ml" }, p.name));
+    if (!isGM()) return el;
+    function put() { el.style.left = p.mx + "%"; el.style.top = p.my + "%"; }
+    el.addEventListener("pointerdown", function (e) {
+      e.preventDefault(); el.setPointerCapture(e.pointerId);
+      var r = stage.getBoundingClientRect();
+      function mv(ev) { p.mx = Math.max(0, Math.min(100, (ev.clientX - r.left) / r.width * 100)); p.my = Math.max(0, Math.min(100, (ev.clientY - r.top) / r.height * 100)); put(); }
+      function up() { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); commit(); }
+      el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+    });
+    el.addEventListener("keydown", function (e) {
+      var d = { ArrowLeft: [-2, 0], ArrowRight: [2, 0], ArrowUp: [0, -2], ArrowDown: [0, 2] }[e.key];
+      if (!d) return; e.preventDefault();
+      p.mx = Math.max(0, Math.min(100, p.mx + d[0])); p.my = Math.max(0, Math.min(100, p.my + d[1])); put(); markDirty();
+    });
+    return el;
+  }
+  function fileBtn(text, cb, opt) {
+    var inp = h("input", { type: "file", accept: "image/*", hidden: true, onchange: function () { readImg(this.files[0], cb, opt); this.value = ""; } });
+    return h("span", { onclick: function (e) { e.stopPropagation(); } }, inp, h("button", { class: "ghost sm", type: "button", onclick: function () { inp.click(); } }, text));
+  }
+  function zonePlayers(zid) { return state.players.filter(function (p) { return p.zone === zid; }); }
+  function zoneMonsters(zid) { return state.monsters.filter(function (m) { return m.zone === zid && m.summoned; }); }
+
+  function renderCenter() {
+    var box = $("center"); box.replaceChildren();
+    /* 지도 */
+    var mapCard = h("div", { class: "card" });
+    mapCard.append(h("div", { class: "head" }, h("h3", {}, "현장 지도"), h("div", { class: "row" },
+      h("button", { class: "ghost sm", onclick: function () { ui.zoom = Math.max(.4, ui.zoom - .2); render(); } }, "축소"),
+      h("span", { class: "mono soft" }, Math.round(ui.zoom * 100) + "%"),
+      h("button", { class: "ghost sm", onclick: function () { ui.zoom = Math.min(3, ui.zoom + .2); render(); } }, "확대"),
+      h("label", { class: "gm-only", style: "flex-direction:row;align-items:center" }, h("span", { class: "tag warn" }, "지도 업로드/교체"),
+        h("input", { type: "file", accept: "image/*", style: "width:150px", onchange: function () { readImg(this.files[0], function (d) { mapImg = d; commit(); toast("지도를 교체했습니다. 진행 상태는 그대로입니다."); }, MAPOPT); } })))));
+    var mw = h("div", { class: "mapwrap" });
+    if (mapImg) {
+      var stage = h("div", { class: "stage", style: "width:" + Math.round(ui.zoom * 100) + "%;--tk:" + (state.tokenSize || 44) + "px" }, h("img", { src: mapImg, alt: "현장 지도" }));
+      state.players.forEach(function (p) { stage.append(mapDot(p, stage)); });
+      npcOnMap().forEach(function (n) { stage.append(mapDot(n, stage, "npc")); });
+      mw.append(stage);
+    } else {
+      var estage = h("div", { class: "stage empty", style: "width:" + Math.round(ui.zoom * 100) + "%;--tk:" + (state.tokenSize || 44) + "px" }, h("span", { class: "hintmap" }, "지도 이미지가 아직 없습니다"));
+      state.players.forEach(function (p) { estage.append(mapDot(p, estage)); });
+      npcOnMap().forEach(function (n) { estage.append(mapDot(n, estage, "npc")); });
+      mw.append(estage);
+    }
+    mapCard.append(mw);
+    mapCard.append(h("p", { class: "soft" }, isGM() ? "플레이어(원형)와 NPC(네모, 보라색 이름) 토큰을 끌어서 옮기세요. 키보드로는 토큰을 선택하고 방향키를 누릅니다. 토큰 위치는 구역 목록과 별개입니다." : "지도 위 원형 토큰은 플레이어, 보라색 이름의 네모 토큰은 NPC입니다."));
+    if (isGM()) {
+      mapCard.append(h("div", { class: "tokens" }, h("h3", {}, "토큰 이미지"),
+        h("div", { class: "row" }, state.players.map(function (p) {
+          return h("div", { class: "item", style: "flex:1 1 210px" },
+            h("span", { style: "display:flex;gap:8px;align-items:center" }, h("span", { class: "av" }, p.dot ? h("img", { src: p.dot, alt: "" }) : p.name.slice(0, 1)), p.name),
+            h("span", { class: "row", style: "align-items:center" },
+              fileBtn(p.dot ? "변경" : "올리기", function (d) { p.dot = d; commit(); toast(p.name + " 토큰 이미지를 바꿨습니다."); }, TOKOPT),
+              p.dot ? h("button", { class: "ghost sm", onclick: function () { p.dot = ""; commit(); } }, "제거") : null));
+        })),
+        h("h3", {}, "NPC 토큰"),
+        h("div", { class: "row" }, state.npcs.length ? state.npcs.map(function (n) {
+          return h("div", { class: "item", style: "flex:1 1 260px;flex-wrap:wrap" },
+            h("span", { style: "display:flex;gap:8px;align-items:center" }, h("span", { class: "av", style: "border-radius:6px;border-color:var(--npc)" }, (n.dot || n.img) ? h("img", { src: n.dot || n.img, alt: "" }) : n.name.slice(0, 1)), n.name),
+            h("span", { class: "row", style: "align-items:center" },
+              h("label", { style: "flex-direction:row;align-items:center;gap:4px;color:var(--ink)" }, h("input", { type: "checkbox", checked: n.onmap !== false || null, onchange: function () { n.onmap = this.checked; commit(); } }), "지도에 표시"),
+              fileBtn(n.dot ? "변경" : "올리기", function (d) { n.dot = d; commit(); toast(n.name + " 토큰 이미지를 바꿨습니다."); }, TOKOPT),
+              n.dot ? h("button", { class: "ghost sm", onclick: function () { n.dot = ""; commit(); } }, "제거") : null));
+        }) : h("p", { class: "soft" }, "등록된 NPC가 없습니다.")),
+        h("p", { class: "soft" }, "토큰 이미지를 올리지 않으면 NPC 프로필 이미지가, 그것도 없으면 이름 첫 글자가 표시됩니다. 숨김(퇴장) 상태이거나 '지도에 표시'를 끈 NPC는 플레이어에게 보이지 않고, GM에게만 흐리게 보입니다."),
+        h("label", { style: "flex-direction:row;align-items:center;gap:8px;margin-top:8px" }, "토큰 크기", h("input", { type: "range", min: 24, max: 96, value: state.tokenSize || 44, style: "width:140px", onchange: function () { state.tokenSize = +this.value; commit(); } }), h("span", { class: "mono soft" }, (state.tokenSize || 44) + "px"))));
+    }
+    box.append(mapCard);
+
+    /* 구역 현황 */
+    var zc = h("div", { class: "card" }, h("div", { class: "head" }, h("h3", {}, "구역별 현황")));
+    var tb = h("table", { class: "ztable" }, h("thead", {}, h("tr", {}, ["구역", "위치한 플레이어", "괴물", "잠금", "탐색", isGM() ? "관리" : ""].map(function (t) { return h("th", {}, t); }))));
+    var body = h("tbody", {});
+    state.zones.forEach(function (z) {
+      var fog = !isGM() && z.hidden;
+      var pl = zonePlayers(z.id).map(function (p) { return p.name; }), mo = zoneMonsters(z.id).map(function (m) { return m.name; });
+      var req = state.unlock.filter(function (u) { return u.zid === z.id; });
+      var tr = h("tr", {});
+      if (fog) { tr.append(h("td", { colspan: 5, class: "soft" }, "미탐색 구역 (안개)"), h("td", {})); }
+      else {
+        tr.append(h("td", {}, h("button", { class: "link", title: "구역 상세 보기", onclick: function () { openZone(z.id); } }, z.name), z.hidden ? h("span", { class: "tag warn", style: "margin-left:6px" }, "숨김") : null),
+          h("td", { "data-l": "플레이어" }, pl.length ? pl.join(", ") : "없음"),
+          h("td", { "data-l": "괴물" }, mo.length ? h("span", { class: "tag bad" }, mo.join(", ")) : "없음"),
+          h("td", { "data-l": "잠금" }, z.lock ? h("span", { class: "tag bad" }, "잠김 · " + (z.lock.type === "key" ? "열쇠" : "비밀번호")) : "열림",
+            (z.lock && !isGM()) ? h("div", {}, h("button", { class: "sm", onclick: function () { openUnlock(z.id); } }, "해제 요청")) : null),
+          h("td", { "data-l": "탐색" }, z.lock ? "접근 제한" : z.open ? "가능" : "불가"),
+          h("td", { class: "gm-only" },
+            h("div", { class: "row" },
+              h("button", { class: "ghost sm", onclick: function () { z.hidden = !z.hidden; commit(); } }, z.hidden ? "공개" : "숨김"),
+              z.lock ? h("button", { class: "ghost sm", onclick: function () { z.lock = null; commit(); } }, "잠금 해제") : null,
+              req.map(function (u) {
+                return h("span", { class: "row" }, h("span", { class: "tag warn" }, P(u.pid).name + ": " + u.text + " (조건 충족)"),
+                  h("button", { class: "sm", onclick: function () { z.lock = null; state.unlock = state.unlock.filter(function (x) { return x.id !== u.id; }); say("system", "시스템", z.name + "의 잠금이 해제되었습니다."); commit(); } }, "승인"),
+                  h("button", { class: "ghost sm", onclick: function () { state.unlock = state.unlock.filter(function (x) { return x.id !== u.id; }); commit(); } }, "거절"));
+              }))));
+      }
+      body.append(tr);
+    });
+    tb.append(body); zc.append(tb); $("right").append(zc);
+
+    /* NPC */
+    var npcs = state.npcs.filter(function (n) { return isGM() || n.visible; });
+    var nc = h("div", { class: "card" }, h("div", { class: "head" }, h("h3", {}, "현장 NPC"), h("span", { class: "soft" }, isGM() ? "이름을 누르면 그 NPC로 말합니다" : "NPC와 같은 구역에 있어야 말을 걸 수 있습니다")));
+    if (!npcs.length) nc.append(h("p", { class: "soft" }, "지금 만날 수 있는 인물이 없습니다."));
+    npcs.forEach(function (n) {
+      var on = isGM() && ui.speaker === "n:" + n.id;
+      nc.append(h("div", { class: "item", style: "flex-wrap:wrap" + (on ? ";border-color:var(--brass)" : "") },
+        h("span", {}, isGM() ? h("button", { class: "link", "aria-pressed": String(on), onclick: function () { setSpeaker(on ? "gm" : "n:" + n.id); } }, n.name, on ? " (발언 중)" : "") : h("b", {}, n.name),
+          " ", h("span", { class: "soft" }, (!isGM() && Z(n.zone) && Z(n.zone).hidden ? "미탐색 구역" : zname(n.zone)) + (n.visible ? "" : " · 숨김"))),
+        h("span", { class: "row" }, h("button", { class: "ghost sm", onclick: function () { openNpcLog(n.id); } }, "대화 기록"),
+          isGM() ? [
+            h("select", { style: "width:auto;font-size:12px;padding:2px 4px", "aria-label": n.name + " 위치", onchange: function () { n.zone = this.value; commit(); }, value: n.zone }, state.zones.map(function (z) { return h("option", { value: z.id }, z.name); })),
+            h("button", { class: "ghost sm", onclick: function () { ui.tab = "npc"; openGM(); } }, "편집")]
+          : (function () { var near = me() && me().zone === n.zone; return h("button", { class: "sm", disabled: !near, title: near ? "" : "NPC와 같은 구역에 있어야 합니다", onclick: function () { openNpcTalk(n.id); } }, near ? "말 걸기" : "다른 구역"); })())));
+    });
+    if (isGM()) {
+      var nn = h("input", { placeholder: "새 NPC 이름", "aria-label": "새 NPC 이름", style: "flex:1 1 120px" });
+      nc.append(h("div", { class: "row" }, nn, h("button", { class: "sm", onclick: function () {
+        if (!nn.value.trim()) return;
+        var n = { id: "n" + uid(), name: nn.value.trim(), desc: "", zone: state.zones[0].id, visible: true, img: "", dot: "", onmap: true, mx: 50, my: 50 };
+        state.npcs.push(n); ui.speaker = "n:" + n.id; fillChatSelects(); commit();
+      } }, "NPC 추가")));
+      if (ui.speaker !== "gm") nc.append(h("div", { class: "row" }, h("button", { class: "ghost sm", onclick: function () { setSpeaker("gm"); } }, "GM으로 말하기로 돌아가기")));
+    }
+    var ncCard = nc;
+
+    /* 행동 */
+    var tgt = isGM() ? P(ui.target) : me();
+    var ac = h("div", { class: "card" }, h("div", { class: "head" }, h("h3", {}, "판정 · 조사")));
+    if (!tgt) { ac.append(h("p", { class: "soft" }, "플레이어 화면에서만 사용할 수 있습니다.")); }
+    else {
+      if (!/^(str|int|spd|rea|s[0-3])$/.test(ui.key)) ui.key = "str";
+      var row = h("div", { class: "row" });
+      if (isGM()) row.append(h("label", { style: "flex:1 1 120px" }, "대상 플레이어", h("select", { onchange: function () { ui.target = this.value; render(); }, value: ui.target }, state.players.map(function (p) { return h("option", { value: p.id }, p.name); }))));
+      row.append(h("label", { style: "flex:1 1 140px" }, "항목", h("select", { id: "keysel", onchange: function () { ui.key = this.value; }, value: ui.key },
+        STATS.map(function (s) { return h("option", { value: s[0] }, s[1] + " " + tgt.stats[s[0]]); }),
+        tgt.skills.map(function (s, i) { return h("option", { value: "s" + i }, "스킬 " + (i + 1) + " · " + s); }))));
+      row.append(h("button", { onclick: function () { ui.key = $("keysel").value; doRoll(tgt.id, ui.key, false); } }, "판정"));
+      row.append(h("button", { class: "brass", disabled: !isGM() && tgt.inves <= 0, onclick: function () { doRoll(tgt.id, "inv", true); } }, isGM() ? "조사 (횟수 제한 없음)" : "조사 (남은 " + tgt.inves + "회)"));
+      ac.append(row);
+      var L = ui.last;
+      ac.append(h("div", { class: "roll" }, h("div", { class: "big" + (L ? (L.ok ? " ok" : " bad") : "") }, L ? L.tag : "--"),
+        h("div", {}, L ? h("div", { class: "soft" }, L.name + " · " + L.label) : h("span", { class: "soft" }, "판정 결과가 여기에 표시됩니다. 성공 확률과 주사위 숫자는 아무에게도 표시되지 않습니다."))));
+      ac.append(h("p", { class: "soft" }, "'판정'은 위에서 고른 항목으로, '조사'는 별도의 조사 능력치로 굴립니다."));
+      if (!isGM()) ac.append(h("p", { class: "soft" }, "조사는 성공과 실패에 관계없이 1회가 차감되고, 다음 시간대에 4회로 초기화됩니다."));
+    }
+    $("left").append(ac, ncCard);
+  }
+
+  function renderRight() {
+    var box = $("right"); box.replaceChildren();
+    var mc = h("div", { class: "card" }, h("div", { class: "head" }, h("h3", {}, "자료 보관함"), h("div", { class: "row" },
+      h("button", { class: "brass sm gm-only", onclick: openAddMaterial }, "자료 추가"),
+      h("button", { class: "ghost sm", onclick: openNotes }, "메모장"))));
+    var mats = state.materials.filter(function (m) { return isGM() || m.found.indexOf(ui.role) >= 0; });
+    if (!mats.length) mc.append(h("p", { class: "soft" }, "발견한 자료가 없습니다."));
+    mats.forEach(function (m) {
+      mc.append(h("div", { class: "item", title: m.desc }, h("button", { class: "link", title: m.desc, onclick: function () { openMaterial(m.id); } }, m.title),
+        isGM() ? h("span", { class: "row", style: "align-items:center;flex:none" }, h("span", { class: "tag" }, m.found.length ? "발견 " + m.found.length + "명" : "미발견"),
+          h("button", { class: "ghost sm", onclick: function () { state.players.forEach(function (p) { if (m.found.indexOf(p.id) < 0) discover(m, p.id); }); commit(); } }, "전체 공개")) : null));
+    });
+    box.append(mc);
+
+    var pid = ui.mi; if (!P(pid)) pid = ui.mi = state.players[0].id;
+    var ic = h("div", { class: "card" }, h("div", { class: "head" }, h("h3", {}, "인벤토리 (8칸)"), h("button", { class: "brass sm gm-only", onclick: openAddItem }, "아이템 등록"),
+      h("select", { style: "width:auto", "aria-label": "인벤토리 대상", onchange: function () { ui.mi = this.value; render(); }, value: pid }, state.players.map(function (p) { return h("option", { value: p.id }, p.name + (p.id === ui.role ? " (나)" : "")); }))));
+    var sl = h("div", { class: "slots" });
+    P(pid).inv.forEach(function (it, i) {
+      if (!it) { sl.append(h("div", { class: "slot empty" }, "빈 칸 " + (i + 1))); return; }
+      var cell = h("div", { class: "slot" }, h("button", { class: "link", title: "자세히 보기", onclick: function () { openItem(it); } }, it.name));
+      if (isGM()) cell.append(h("button", { class: "danger sm", title: "이 플레이어에게서 제거 (등록된 아이템은 유지)", onclick: function () {
+        var q = P(pid); q.inv[i] = null; say("system", "시스템", q.name + "의 아이템 '" + it.name + "'이(가) 제거되었습니다.", { to: pid }); commit();
+      } }, "제거"));
+      sl.append(cell);
+    });
+    ic.append(sl); ic.append(h("p", { class: "soft" }, "모든 플레이어의 인벤토리를 볼 수 있고, 지급과 회수는 GM만 합니다."));
+    box.append(ic);
+  }
+
+  function avatar(m) {
+    var src = "", ch = "", gm = false;
+    if (m.type === "npc") { var n = state.npcs.filter(function (x) { return x.id === m.npcId; })[0]; src = n ? n.img : ""; ch = m.author.slice(0, 1); }
+    else if (m.type === "player" || m.type === "dice" || m.type === "investigate") {
+      var q = P(m.authorId) || state.players.filter(function (x) { return x.name === m.author; })[0];
+      if (!q) return h("span", { class: "av none" });
+      src = q.photo; ch = q.name.slice(0, 1);
+    } else if (m.type === "gm") { ch = "GM"; gm = true; }
+    else return h("span", { class: "av none" });
+    return h("span", { class: "av" + (gm ? " gmav" : "") }, src ? h("img", { src: src, alt: "" }) : ch);
+  }
+  function renderChat() {
+    var log = $("chatlog"), stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+    log.replaceChildren();
+    state.chat.filter(visible).forEach(function (m) {
+      var who = m.to ? (m.to === "gm" ? "귓속말→GM" : "귓속말→" + (P(m.to) ? P(m.to).name : "")) : "";
+      log.append(h("div", { class: "msg " + m.type + (m.to ? " whisper" : "") }, avatar(m), h("time", {}, clock(m.ts)),
+        h("span", { class: "who" }, m.author + (who ? " (" + who + ")" : "") + (m.type === "gm" || m.type === "player" || m.type === "npc" ? ":" : "")), h("span", {}, m.text)));
+    });
+    if (stick) log.scrollTop = log.scrollHeight;
+    $("chatscope").textContent = isGM() ? "GM은 모든 메시지를 볼 수 있습니다." : "내 귓속말과 전체 메시지만 보입니다.";
+  }
+
+  /* ---------- 상단 컨트롤 ---------- */
+  function fillRole() {
+    var r = $("role"); r.replaceChildren(h("option", { value: "GM" }, "GM"));
+    state.players.forEach(function (p) { r.append(h("option", { value: p.id }, p.name + " (플레이어)")); });
+    r.value = ui.role; fillChatSelects();
+  }
+  function fillChatSelects() {
+    var sp = $("c-speaker"), to = $("c-to");
+    sp.replaceChildren();
+    if (isGM()) {
+      sp.append(h("option", { value: "gm" }, "GM")); state.npcs.forEach(function (n) { sp.append(h("option", { value: "n:" + n.id }, "NPC · " + n.name)); });
+      if (!state.npcs.some(function (n) { return "n:" + n.id === ui.speaker; })) ui.speaker = "gm";
+      sp.value = ui.speaker;
+    }
+    else sp.append(h("option", { value: "me" }, me() ? me().name : ""));
+    to.replaceChildren(h("option", { value: "" }, "전체 공개"));
+    if (isGM()) state.players.forEach(function (p) { to.append(h("option", { value: p.id }, "귓속말 → " + p.name)); });
+    else to.append(h("option", { value: "gm" }, "귓속말 → GM"));
+  }
+  function setSpeaker(v) { ui.speaker = v; fillChatSelects(); render(); $("c-text").focus(); }
+  $("c-speaker").addEventListener("change", function () { if (isGM()) { ui.speaker = this.value; render(); } });
+  $("role").addEventListener("change", function () {
+    if (this.value === "GM" && !ui.gmOk) { this.value = ui.role; openGmLogin(); return; }
+    ui.role = this.value; if (!isGM()) { ui.mi = ui.role; ui.gmOk = false; } fillChatSelects(); closeModal(); render();
+  });
+  function openGmLogin() {
+    openModal("GM 로그인", function () {
+      var pw = h("input", { type: "password", id: "gm-pw", placeholder: "GM 비밀번호", autocomplete: "off" }), err = h("p", { class: "err" });
+      function go() {
+        if (pw.value === "lu3750") { ui.gmOk = true; ui.role = "GM"; $("role").value = "GM"; fillChatSelects(); closeModal(); render(); toast("GM으로 입장했습니다."); }
+        else { err.textContent = "비밀번호가 맞지 않습니다."; pw.select(); }
+      }
+      pw.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); });
+      setTimeout(function () { pw.focus(); }, 30);
+      return h("div", { class: "mbody", style: "padding:0" }, h("p", { class: "soft" }, "GM 화면은 비밀번호를 입력해야 열 수 있습니다."), h("label", {}, "비밀번호", pw), err, h("button", { onclick: go }, "입장"));
+    });
+  }
+  $("chatform").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var t = $("c-text").value.trim(); if (!t) return;
+    var to = $("c-to").value || null, sp = $("c-speaker").value;
+    if (isGM()) {
+      if (sp.indexOf("n:") === 0) { var n = state.npcs.filter(function (x) { return x.id === sp.slice(2); })[0]; say("npc", n.name, t, { to: to, npcId: n.id, authorId: "GM" }); }
+      else say("gm", "GM", t, { to: to, authorId: "GM" });
+    } else if (me()) say("player", me().name, t, { to: to, authorId: ui.role });
+    $("c-text").value = ""; commit();
+  });
+  var secs = 0, tm = null;
+  function paintTimer() { $("timer").textContent = pad(Math.floor(secs / 60)) + ":" + pad(secs % 60); }
+  $("timer-btn").addEventListener("click", function () {
+    if (tm) { clearInterval(tm); tm = null; this.textContent = "시작"; } else { tm = setInterval(function () { secs++; paintTimer(); }, 1000); this.textContent = "정지"; }
+  });
+  $("timer-rst").addEventListener("click", function () { secs = 0; paintTimer(); });
+  var mode = "night";
+  try { mode = localStorage.getItem("norvex.mode") === "day" ? "day" : "night"; } catch (e) {}
+  function paintMode() {
+    document.documentElement.dataset.mode = mode;
+    $("mode-btn").textContent = mode === "day" ? "밤 모드" : "아침 모드";
+    $("mode-btn").setAttribute("aria-pressed", String(mode === "day"));
+  }
+  $("mode-btn").addEventListener("click", function () {
+    mode = mode === "day" ? "night" : "day";
+    try { localStorage.setItem("norvex.mode", mode); } catch (e) {}
+    paintMode();
+  });
+  paintMode();
+  $("save-btn").addEventListener("click", function () { save(false); });
+  $("auto-save").addEventListener("change", function () {
+    autosave = this.checked;
+    try { localStorage.setItem("norvex.auto", autosave ? "1" : "0"); } catch (e) {}
+    if (autosave && dirty) save(true); else paintSave();
+    toast(autosave ? "변경할 때마다 자동으로 저장합니다." : "자동 저장을 껐습니다. 저장 버튼을 눌러야 저장됩니다.");
+  });
+  document.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(false); } });
+  window.addEventListener("beforeunload", function (e) { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+  $("next-btn").addEventListener("click", nextSlot);
+  $("gm-btn").addEventListener("click", openGM);
+  $("set-btn").addEventListener("click", openSettings);
+  var bgm = { list: [], cur: "" }, idb = null;
+  function bgmPaint() {
+    var sel = $("bgm-sel"), a = $("bgm");
+    sel.replaceChildren(h("option", { value: "" }, bgm.list.length ? "BGM 선택" : "BGM 없음"), bgm.list.map(function (t) { return h("option", { value: t.id }, t.name); }));
+    sel.value = bgm.cur;
+    $("bgm-btn").textContent = (a.src && !a.paused) ? "BGM 정지" : "BGM 재생";
+  }
+  function bgmPlay(id) {
+    var t = bgm.list.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    var a = $("bgm"); bgm.cur = id; a.src = t.url;
+    var pr = a.play(); if (pr && pr.catch) pr.catch(function () { toast("재생하지 못했습니다. 파일 형식을 확인하세요."); bgmPaint(); });
+    bgmPaint();
+  }
+  function bgmDel(id) {
+    var t = bgm.list.filter(function (x) { return x.id === id; })[0]; if (!t) return;
+    if (bgm.cur === id) { $("bgm").pause(); $("bgm").removeAttribute("src"); bgm.cur = ""; }
+    URL.revokeObjectURL(t.url); bgm.list = bgm.list.filter(function (x) { return x.id !== id; });
+    if (idb) { try { idb.transaction("tracks", "readwrite").objectStore("tracks").delete(id); } catch (e) {} }
+    bgmPaint();
+  }
+  function bgmAdd(files) {
+    var probe = document.createElement("audio");
+    Array.prototype.forEach.call(files, function (f) {
+      if (!(/^audio\//.test(f.type) || /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|webm)$/i.test(f.name))) { toast("'" + f.name + "'은(는) 오디오 파일이 아닙니다."); return; }
+      if (f.type && !probe.canPlayType(f.type)) { toast("'" + f.name + "'은(는) 이 브라우저에서 재생할 수 없는 형식입니다. mp3, m4a, wav, ogg를 권장합니다."); return; }
+      if (f.size > 40000000) { toast("'" + f.name + "'은(는) 40MB를 넘어 올릴 수 없습니다."); return; }
+      var item = { id: uid(), name: f.name.replace(/\.[^.]+$/, ""), url: URL.createObjectURL(f) };
+      var test = new Audio(); test.preload = "metadata";
+      test.onerror = function () { bgmDel(item.id); toast("'" + f.name + "'을(를) 재생할 수 없어 제외했습니다. 다른 형식(mp3, m4a, wav, ogg)으로 올려 주세요."); refreshModal(); };
+      test.src = item.url;
+      bgm.list.push(item);
+      if (idb) { try { idb.transaction("tracks", "readwrite").objectStore("tracks").put({ id: item.id, name: item.name, blob: f }); } catch (e) {} }
+      else toast("이 환경에서는 BGM을 저장할 수 없어 새로고침하면 사라집니다.");
+    });
+    bgmPaint(); refreshModal();
+  }
+  function bgmLoad() {
+    try {
+      var rq = indexedDB.open("norvex-bgm", 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore("tracks", { keyPath: "id" }); };
+      rq.onsuccess = function () {
+        idb = rq.result;
+        var g = idb.transaction("tracks", "readonly").objectStore("tracks").getAll();
+        g.onsuccess = function () { (g.result || []).forEach(function (t) { bgm.list.push({ id: t.id, name: t.name, url: URL.createObjectURL(t.blob) }); }); bgmPaint(); };
+      };
+    } catch (e) {}
+  }
+  $("bgm-btn").addEventListener("click", function () {
+    var a = $("bgm");
+    if (!bgm.list.length) { toast("재생할 BGM이 없습니다. GM이 GM 관리의 이벤트·사운드 탭에서 올려야 합니다."); return; }
+    if (a.src && !a.paused) { a.pause(); return; }
+    if (a.src && bgm.cur) { var pr = a.play(); if (pr && pr.catch) pr.catch(function () {}); return; }
+    bgmPlay(bgm.cur || bgm.list[0].id);
+  });
+  $("bgm-sel").addEventListener("change", function () { if (this.value) bgmPlay(this.value); else { $("bgm").pause(); bgm.cur = ""; bgmPaint(); } });
+  $("bgm").addEventListener("play", bgmPaint); $("bgm").addEventListener("pause", bgmPaint);
+  $("bgm-vol").addEventListener("input", function () { $("bgm").volume = this.value / 100; });
+  $("bgm").volume = .4;
+
+  /* ---------- 모달 ---------- */
+  function openModal(title, build, wide) { ui.modal = { title: title, build: build, wide: wide }; refreshModal(); }
+  function closeModal() { ui.modal = null; refreshModal(); }
+  function refreshModal() {
+    var m = $("modal");
+    if (!ui.modal) { m.hidden = true; m.replaceChildren(); return; }
+    m.hidden = false;
+    m.replaceChildren(h("div", { class: "mback", onclick: closeModal }),
+      h("div", { class: "mbox" + (ui.modal.wide ? " wide" : ""), role: "dialog", "aria-label": ui.modal.title },
+        h("div", { class: "mhead" }, h("h2", {}, ui.modal.title), h("button", { class: "ghost sm", onclick: closeModal }, "닫기")),
+        h("div", { class: "mbody" }, ui.modal.build())));
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && ui.modal) closeModal(); });
+
+  function openProfile(pid) {
+    openModal("캐릭터 정보", function () {
+      var p = P(pid); if (!p.created) return h("div", { class: "mbody", style: "padding:0" }, h("p", { class: "soft" }, "GM이 아직 프로필을 작성하지 않았습니다."), isGM() ? h("button", { onclick: function () { ui.gmPid = pid; ui.tab = "char"; openGM(); } }, "GM 편집") : null);
+      return h("div", { class: "mbody", style: "padding:0" },
+        h("div", { class: "row", style: "align-items:center" }, h("div", { class: "ph pc", style: "width:96px;height:96px;padding:0;display:grid;place-items:center;overflow:hidden" }, p.photo ? h("img", { src: p.photo, alt: p.name, style: "width:100%;height:100%;object-fit:cover" }) : p.name.slice(0, 1)),
+          h("div", {}, h("h2", {}, p.name), h("div", { class: "soft" }, p.age + "세 · " + p.height + "cm · " + p.weight + "kg"), h("div", { class: "soft" }, "위치: " + zname(p.zone)))),
+        h("div", { class: "pips" }, STATS.map(function (s) { return h("div", { class: "pip" }, s[1] + " " + p.stats[s[0]], pips(p.stats[s[0]])); })),
+        h("div", {}, h("h3", {}, "선택 스킬"), h("div", { class: "row", style: "margin-top:6px" }, p.skills.map(function (s) { return h("span", { class: "tag ok" }, s); }))),
+        h("div", {}, h("h3", {}, "현재 상태"), h("div", { class: "row", style: "margin-top:6px" }, p.status.length ? p.status.map(function (s) { return h("span", { class: "tag bad" }, s); }) : h("span", { class: "soft" }, "이상 없음"))),
+        h("div", {}, h("h3", {}, "인벤토리"), h("div", { class: "slots", style: "margin-top:6px" }, p.inv.map(function (it, i) { return h("div", { class: "slot" + (it ? "" : " empty") }, it ? it.name : "빈 칸"); }))),
+        isGM() ? h("div", { class: "row" }, h("span", { class: "tag mono" }, "HP " + p.hp + " · 이성 " + p.san), h("button", { onclick: function () { ui.gmPid = pid; ui.tab = "char"; openGM(); } }, "GM 편집")) : null);
+    });
+  }
+
+  function charForm(p, mode) {
+    var gm = mode === "gm", err = h("p", { class: "err" });
+    var f = {
+      name: h("input", { value: p.name, id: "f-name" }), age: h("input", { type: "number", value: p.age }), height: h("input", { type: "number", value: p.height }), weight: h("input", { type: "number", value: p.weight })
+    }, photo = p.photo;
+    var st = {}; STATS.forEach(function (s) { st[s[0]] = h("input", { type: "number", min: 0, max: 5, value: p.stats[s[0]] }); });
+    var sum = h("span", { class: "tag" });
+    function upd() { var t = 0; STATS.forEach(function (s) { t += parseInt(st[s[0]].value, 10) || 0; }); sum.textContent = "합계 " + t + " / 16"; sum.className = "tag " + (t > 16 ? "bad" : "ok"); }
+    STATS.forEach(function (s) { st[s[0]].addEventListener("input", upd); }); upd();
+    var chosen = p.skills.slice(), cnt = h("span", { class: "tag" });
+    function cupd() { cnt.textContent = "선택 " + chosen.length + " / 4"; cnt.className = "tag " + (chosen.length === 4 ? "ok" : "warn"); }
+    var sg = h("div", { class: "skills" }); cupd();
+    SKILLS.forEach(function (s) {
+      var cb = h("input", { type: "checkbox" }); cb.checked = chosen.indexOf(s) >= 0;
+      cb.addEventListener("change", function () {
+        if (cb.checked) { if (chosen.length >= 4) { cb.checked = false; return; } chosen.push(s); } else chosen = chosen.filter(function (x) { return x !== s; });
+        cupd();
+      });
+      sg.append(h("label", {}, cb, s));
+    });
+    var gmf = {};
+    var form = h("div", { class: "mbody", style: "padding:0" },
+      h("div", { class: "f2" }, h("label", {}, "캐릭터 이름", f.name), h("label", {}, "나이", f.age), h("label", {}, "키(cm)", f.height), h("label", {}, "몸무게(kg)", f.weight)),
+      h("label", {}, "증명사진", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { photo = d; toast("사진을 선택했습니다. 저장하면 적용됩니다."); }, PHOTOOPT); } })),
+      h("div", {}, h("div", { class: "row", style: "align-items:center" }, h("h3", {}, "기본 스탯 (각 5점 이하, 합계 16점 이하)"), sum),
+        h("div", { class: "f2", style: "margin-top:6px" }, STATS.map(function (s) { return h("label", {}, s[1], st[s[0]]); }))),
+      h("div", {}, h("div", { class: "row", style: "align-items:center" }, h("h3", {}, "선택 스킬 4개"), cnt), h("div", { style: "margin-top:6px" }, sg)));
+    if (gm) {
+      gmf.hp = h("input", { type: "number", value: p.hp }); gmf.san = h("input", { type: "number", value: p.san });
+      gmf.status = h("input", { value: p.status.join(", "), placeholder: "쉼표로 구분" });
+      gmf.dot = p.dot || "";
+      form.append(h("label", {}, "지도용 도트 이미지 (지도 위에 표시되는 미니 도트)", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { gmf.dot = d; toast("도트 이미지를 선택했습니다. 저장하면 적용됩니다."); }, TOKOPT); } })));
+      gmf.prob = {}; var pr = h("div", { class: "f2", style: "margin-top:6px" });
+      PROB_KEYS.forEach(function (k) { gmf.prob[k] = h("input", { type: "password", inputmode: "numeric", autocomplete: "off", maxlength: 3, placeholder: "변경 안 함", "aria-label": probLabel(p, k) + " 새 성공 확률(%)" }); pr.append(h("label", {}, probLabel(p, k), gmf.prob[k])); });
+      pr.append(h("p", { class: "soft", style: "grid-column:1/-1" }, "현재 확률은 아무에게도 표시되지 않습니다. 바꾸려면 0~100 사이 숫자를 입력하고 저장하세요. 비워 두면 그대로 유지되고, 바꾼 확률은 다음 판정부터 적용됩니다."));
+      form.append(h("div", {}, h("h3", {}, "GM 전용: 체력 · 이성 · 상태이상"), h("div", { class: "f2", style: "margin-top:6px" }, h("label", {}, "체력", gmf.hp), h("label", {}, "이성 수치", gmf.san), h("label", {}, "상태이상", gmf.status))),
+        h("div", {}, h("h3", {}, "GM 전용: 판정 성공 확률 입력 (입력만 가능, 값은 표시되지 않음)"), pr));
+    }
+    form.append(err, h("div", { class: "row" }, h("button", { onclick: function () {
+      var t = 0, bad = false; STATS.forEach(function (s) { var v = parseInt(st[s[0]].value, 10); if (isNaN(v) || v < 0 || v > 5) bad = true; t += v || 0; });
+      if (!f.name.value.trim()) { err.textContent = "캐릭터 이름을 입력하세요."; return; }
+      if (bad) { err.textContent = "각 스탯은 0에서 5 사이여야 합니다."; return; }
+      if (t > 16) { err.textContent = "스탯 합계는 16점 이하여야 합니다. 현재 " + t + "점입니다."; return; }
+      if (chosen.length !== 4) { err.textContent = "스킬을 정확히 4개 선택하세요."; return; }
+      p.name = f.name.value.trim(); p.age = +f.age.value || 0; p.height = +f.height.value || 0; p.weight = +f.weight.value || 0; p.photo = photo;
+      STATS.forEach(function (s) { p.stats[s[0]] = parseInt(st[s[0]].value, 10) || 0; }); p.skills = chosen.slice(); p.created = true;
+      if (gm) {
+        p.dot = gmf.dot; p.hp = +gmf.hp.value; p.san = +gmf.san.value; p.status = gmf.status.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+        var badProb = false;
+        Object.keys(gmf.prob).forEach(function (k) {
+          var raw = gmf.prob[k].value.trim(); if (raw === "") return;
+          var n = Number(raw); if (!/^\d{1,3}$/.test(raw) || n < 0 || n > 100) { badProb = true; return; }
+          state.probs[p.id][k] = n;
+        });
+        if (badProb) { err.textContent = "성공 확률은 0에서 100 사이의 숫자로 입력하세요. 잘못된 칸은 바뀌지 않았습니다."; commit(); return; }
+      }
+      fillRole(); commit(); toast("저장했습니다."); if (!gm) closeModal(); else refreshModal();
+    } }, "저장")));
+    return form;
+  }
+
+  function lockMatches(slot, lock) { return !!slot && ((lock.itemId && slot.itemId === lock.itemId) || (!lock.itemId && slot.name === lock.value)); }
+  function openUnlock(zid) {
+    openModal("잠금 해제 요청", function () {
+      var z = Z(zid), pl = me(), err = h("p", { class: "err" });
+      if (!z || !z.lock || !pl) return h("p", { class: "soft" }, "요청할 수 없습니다.");
+      var key = z.lock.type === "key";
+      if (!(key ? (z.lock.itemId || z.lock.value) : z.lock.value)) return h("p", { class: "soft" }, "GM이 아직 이 구역의 해제 조건을 정하지 않았습니다.");
+      if (state.unlock.some(function (u) { return u.zid === zid && u.pid === pl.id; })) return h("p", { class: "soft" }, "이미 해제를 요청했습니다. GM의 승인을 기다려 주세요.");
+      if (key && !pl.inv.some(Boolean)) return h("p", { class: "soft" }, z.name + "은(는) 아이템으로 열립니다. 사용할 수 있는 아이템이 없습니다.");
+      var inp = key
+        ? h("select", { "aria-label": "사용할 아이템" }, h("option", { value: "" }, "내 아이템 선택"), pl.inv.map(function (sl, i) { return sl ? h("option", { value: i }, sl.name) : null; }))
+        : h("input", { type: "password", placeholder: "비밀번호", autocomplete: "off", "aria-label": "비밀번호" });
+      return h("div", { class: "mbody", style: "padding:0" },
+        h("p", {}, z.name + "은(는) " + (key ? "아이템" : "비밀번호") + "로 잠겨 있습니다. 조건이 맞아야 GM에게 요청이 전달됩니다."), inp, err,
+        h("button", { onclick: function () {
+          var text;
+          if (key) {
+            var sl = inp.value === "" ? null : pl.inv[+inp.value];
+            if (!lockMatches(sl, z.lock)) { err.textContent = "이 구역을 여는 아이템이 아닙니다."; return; }
+            text = "아이템 '" + sl.name + "' 사용";
+          } else {
+            if (inp.value !== z.lock.value) { err.textContent = "비밀번호가 맞지 않습니다."; return; }
+            text = "비밀번호 일치";
+          }
+          state.unlock.push({ id: uid(), zid: zid, pid: ui.role, text: text });
+          say("system", "시스템", pl.name + "이(가) " + z.name + " 잠금 해제를 요청했습니다. (" + text + ")", { to: "gm", authorId: ui.role }); commit(); closeModal(); toast("조건이 맞아 GM에게 요청을 보냈습니다.");
+        } }, "요청 보내기"));
+    });
+  }
+  function openZone(zid) {
+    openModal("구역 정보", function () {
+      var z = Z(zid); if (!z) return h("p", { class: "soft" }, "구역을 찾을 수 없습니다.");
+      var pl = zonePlayers(zid).map(function (q) { return q.name; }), mo = zoneMonsters(zid).map(function (q) { return q.name; });
+      var np = state.npcs.filter(function (n) { return n.zone === zid && (isGM() || n.visible); }).map(function (n) { return n.name; });
+      return h("div", { class: "mbody", style: "padding:0" }, h("h2", {}, z.name),
+        h("p", { style: "white-space:pre-wrap" }, z.desc || "등록된 설명이 없습니다."),
+        h("div", { class: "row" }, h("span", { class: "tag" }, "플레이어: " + (pl.length ? pl.join(", ") : "없음")), h("span", { class: "tag" }, "NPC: " + (np.length ? np.join(", ") : "없음")),
+          mo.length ? h("span", { class: "tag bad" }, "괴물: " + mo.join(", ")) : null, z.lock ? h("span", { class: "tag bad" }, "잠김") : h("span", { class: "tag ok" }, "열림")));
+    });
+  }
+  function openMaterial(id) {
+    var m = state.materials.filter(function (x) { return x.id === id; })[0];
+    openModal(m.title, function () {
+      return h("div", { class: "mbody", style: "padding:0" }, m.img ? h("img", { src: m.img, alt: m.title, style: "max-width:100%" }) : null, h("p", { class: "soft" }, m.desc), h("p", { style: "white-space:pre-wrap" }, m.detail),
+        h("p", { class: "soft" }, "발견 구역: " + zname(m.zone)));
+    });
+  }
+  function openNpcTalk(nid) {
+    var n = state.npcs.filter(function (x) { return x.id === nid; })[0];
+    openModal(n.name + "에게 말 걸기", function () {
+      var t = h("textarea", { placeholder: "NPC에게 할 말을 입력하세요" }), priv = h("input", { type: "checkbox" });
+      return h("div", { class: "mbody", style: "padding:0" }, h("p", { class: "soft" }, n.desc), t,
+        h("label", { style: "flex-direction:row;align-items:center" }, priv, "나와 GM만 보기"),
+        h("button", { onclick: function () {
+          if (!t.value.trim()) return;
+          if (me().zone !== n.zone) { toast("NPC와 같은 구역에 있어야 말을 걸 수 있습니다."); closeModal(); return; }
+          say("player", me().name, "(" + n.name + "에게) " + t.value.trim(), { npcId: n.id, authorId: ui.role, to: priv.checked ? "gm" : null }); commit(); closeModal(); toast("GM에게 전달했습니다.");
+        } }, "대사 전달"));
+    });
+  }
+  function openNpcLog(nid) {
+    var n = state.npcs.filter(function (x) { return x.id === nid; })[0];
+    openModal(n.name + " 대화 기록", function () {
+      var rows = state.chat.filter(function (m) { return m.npcId === nid && visible(m); });
+      return h("div", { class: "list" }, rows.length ? rows.map(function (m) { return h("div", { class: "item" }, h("span", {}, h("b", {}, m.author + ": "), m.text), h("span", { class: "mono soft" }, m.day + "일차 " + SLOTS[m.slot] + " " + clock(m.ts))); }) : h("p", { class: "soft" }, "대화 기록이 없습니다."));
+    });
+  }
+  function noteKey() { return ui.note.day + "-" + ui.note.slot; }
+  function openNotes() {
+    if (!isGM()) ui.note.pid = ui.role;
+    openModal("조사 메모장", function () {
+      var pid = ui.note.pid, notes = state.notes[pid] = state.notes[pid] || {}, can = isGM() ? true : pid === ui.role;
+      var ta = h("textarea", { style: "min-height:200px", disabled: !can, value: notes[noteKey()] || "", oninput: function () { notes[noteKey()] = ta.value; markDirty(); } });
+      var daySel = h("input", { type: "number", min: 1, value: ui.note.day, style: "width:70px", onchange: function () { ui.note.day = +this.value || 1; refreshModal(); } });
+      var slotSel = h("select", { style: "width:auto", onchange: function () { ui.note.slot = +this.value; refreshModal(); }, value: ui.note.slot }, SLOTS.map(function (s, i) { return h("option", { value: i }, s); }));
+      var row = h("div", { class: "row", style: "align-items:end" });
+      if (isGM()) row.append(h("label", {}, "플레이어", h("select", { onchange: function () { ui.note.pid = this.value; refreshModal(); }, value: pid }, state.players.map(function (p) { return h("option", { value: p.id }, p.name); }))));
+      row.append(h("label", {}, "일차", daySel), h("label", {}, "시간대", slotSel));
+      var imp = h("button", { disabled: !can, onclick: function () {
+        var lines = state.chat.filter(function (m) { return m.day === ui.note.day && m.slot === ui.note.slot && visibleTo(m, pid); }).map(function (m) {
+          return m.type === "dice" || m.type === "investigate" ? "판정: " + m.text.replace(/^(판정|조사): /, "") : (m.type === "system" ? "[시스템] " : "") + m.author + ": " + m.text; });
+        notes[noteKey()] = (notes[noteKey()] ? notes[noteKey()] + "\n\n" : "") + "[" + ui.note.day + "일차 " + SLOTS[ui.note.slot] + "]\n\n" + lines.join("\n\n");
+        markDirty(); refreshModal();
+      } }, "이 시간대 채팅 가져오기");
+      var cp = h("button", { class: "ghost", onclick: function () {
+        var txt = Object.keys(notes).sort().map(function (k) { return "== " + k.replace("-", "일차 ").replace(/(\d)$/, function (d) { return SLOTS[+d]; }) + " ==\n" + notes[k]; }).join("\n\n");
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function () { toast("메모 전체를 복사했습니다. 메모장에 붙여 넣어 TXT로 저장하세요."); }, function () { toast("복사하지 못했습니다. 본문을 직접 선택해 복사하세요."); });
+        else toast("복사하지 못했습니다. 본문을 직접 선택해 복사하세요.");
+      } }, "전체 복사 (TXT용)");
+      return h("div", { class: "mbody", style: "padding:0" }, row, ta, h("div", { class: "row" }, imp, cp),
+        h("p", { class: "soft" }, can ? "입력하면 자동으로 저장됩니다. 파일 다운로드는 이 화면에서 지원되지 않아 복사 방식으로 대신합니다." : ""));
+    }, true);
+  }
+  function visibleTo(m, pid) { return !m.to || m.to === pid || m.authorId === pid || (ui.role === "GM" && pid === "GM"); }
+
+  function openSettings() {
+    openModal("게임 설정", function () {
+      var c = h("input", { type: "number", min: 1, max: 100, placeholder: "미설정", value: state.crit == null ? "" : state.crit }), f = h("input", { type: "number", min: 1, max: 100, placeholder: "미설정", value: state.fumble == null ? "" : state.fumble });
+      return h("div", { class: "mbody", style: "padding:0" },
+        h("p", { class: "soft" }, "크리티컬과 대실패 기준은 명세서에서 미정입니다. GM이 직접 정할 때까지 판정은 성공과 실패만 표시합니다."),
+        isGM() ? h("div", { class: "f2" }, h("label", {}, "크리티컬: 굴림 값이 이 값 이하 (숫자는 표시되지 않음)", c), h("label", {}, "대실패: 굴림 값이 이 값 이상 (숫자는 표시되지 않음)", f)) : h("p", {}, "GM만 기준을 바꿀 수 있습니다."),
+        isGM() ? h("button", { onclick: function () { state.crit = c.value === "" ? null : +c.value; state.fumble = f.value === "" ? null : +f.value; commit(); closeModal(); toast("판정 기준을 저장했습니다."); } }, "저장") : null,
+        isGM() ? h("button", { class: "danger", onclick: function () { if (!this.dataset.sure) { this.dataset.sure = 1; this.textContent = "한 번 더 누르면 모든 데이터가 초기화됩니다"; return; } state = seed(); mapImg = ""; fillRole(); commit(); closeModal(); } }, "샘플 데이터로 초기화") : null);
+    });
+  }
+
+  /* ---------- GM 관리 ---------- */
+  var GMTABS = [["char", "캐릭터·확률"], ["map", "지도·구역"], ["mat", "자료"], ["item", "아이템"], ["npc", "NPC"], ["mon", "괴물"], ["time", "시간·조사"], ["ev", "이벤트·사운드"]];
+  function openGM() {
+    openModal("GM 관리", function () {
+      var tabs = h("div", { class: "tabs" }, GMTABS.map(function (t) { return h("button", { "aria-pressed": String(ui.tab === t[0]), onclick: function () { ui.tab = t[0]; refreshModal(); } }, t[1]); }));
+      var body = ({ char: gmChar, map: gmMap, mat: gmMat, item: gmItem, npc: gmNpc, mon: gmMon, time: gmTime, ev: gmEv })[ui.tab]();
+      return h("div", { class: "mbody", style: "padding:0" }, tabs, body);
+    }, true);
+  }
+  function zoneSel(val, id) { return h("select", { id: id, value: val }, state.zones.map(function (z) { return h("option", { value: z.id }, z.name); })); }
+  function playerSel(val, id) { return h("select", { id: id, value: val }, state.players.map(function (p) { return h("option", { value: p.id }, p.name); })); }
+  function gmChar() {
+    var p = P(ui.gmPid);
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("div", { class: "row" }, h("label", {}, "플레이어", h("select", { onchange: function () { ui.gmPid = this.value; refreshModal(); }, value: ui.gmPid }, state.players.map(function (x) { return h("option", { value: x.id }, x.name); }))),
+        h("span", { class: "soft" }, "프로필은 GM만 작성하고 수정할 수 있습니다.")),
+      charForm(p, "gm"));
+  }
+  function gmMap() {
+    var nm = h("input", { placeholder: "새 구역 이름" });
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("h3", {}, "지도 이미지"),
+      h("div", { class: "row" }, h("label", { style: "flex:1 1 220px" }, mapImg ? "지도 이미지 변경 (진행 상태는 그대로 유지)" : "지도 이미지 올리기", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { mapImg = d; commit(); refreshModal(); toast("지도를 바꿨습니다."); }, MAPOPT); } })),
+        mapImg ? h("button", { class: "ghost", onclick: function () { mapImg = ""; commit(); refreshModal(); } }, "지도 이미지 제거") : null),
+      h("h3", {}, "구역 이름과 상세 설명"),
+      h("div", { class: "list" }, state.zones.map(function (z) {
+        var ln = h("input", { value: z.name, onchange: function () { z.name = this.value || z.name; commit(); } });
+        var lt = h("select", { onchange: function () { z.lock = this.value === "none" ? null : { type: this.value, value: "", itemId: "" }; commit(); refreshModal(); }, value: z.lock ? z.lock.type : "none" },
+          h("option", { value: "none" }, "열림"), h("option", { value: "key" }, "열쇠로 잠금"), h("option", { value: "password" }, "비밀번호로 잠금"));
+        return h("div", { class: "item", style: "flex-wrap:wrap" }, h("span", { style: "flex:1 1 140px" }, ln), lt,
+          z.lock ? (z.lock.type === "key"
+            ? h("select", { style: "flex:1 1 140px", "aria-label": "해제에 필요한 아이템", onchange: function () {
+                var it = state.items.filter(function (x) { return x.id === this.value; }, this)[0]; z.lock.itemId = it ? it.id : ""; z.lock.value = it ? it.name : ""; commit();
+              }, value: z.lock.itemId || "" }, h("option", { value: "" }, "해제에 필요한 아이템 선택"), state.items.map(function (it) { return h("option", { value: it.id }, it.name); }))
+            : h("input", { style: "flex:1 1 120px", placeholder: "해제 비밀번호", value: z.lock.value, onchange: function () { z.lock.value = this.value; commit(); } })) : null,
+          h("textarea", { "aria-label": z.name + " 상세 설명", placeholder: "구역 상세 설명 (플레이어가 구역 이름을 눌러 볼 수 있음)", style: "flex:1 1 100%;min-height:54px", onchange: function () { z.desc = this.value; commit(); }, value: z.desc || "" }),
+          h("label", { style: "flex-direction:row;align-items:center" }, h("input", { type: "checkbox", checked: z.hidden || null, onchange: function () { z.hidden = this.checked; commit(); } }), "숨김"),
+          h("button", { class: "danger sm", onclick: function () { if (state.zones.length < 2) return; state.zones = state.zones.filter(function (x) { return x.id !== z.id; }); state.players.forEach(function (q) { if (q.zone === z.id) q.zone = state.zones[0].id; }); commit(); refreshModal(); } }, "삭제"));
+      })),
+      h("div", { class: "row" }, h("label", { style: "flex:1" }, "구역 추가", nm), h("button", { onclick: function () { if (!nm.value.trim()) return; state.zones.push({ id: "z" + uid(), name: nm.value.trim(), lock: null, hidden: false, open: true }); commit(); refreshModal(); } }, "추가")),
+      h("p", { class: "soft" }, "플레이어 토큰 이미지는 지도 아래의 '플레이어 토큰 이미지'에서 올립니다. 지도 위에 구역 영역을 그리는 기능과 열쇠 해제 후 지도 자동 교체는 아직 없습니다."));
+  }
+  function openAddMaterial() { openModal("자료 등록", function () { return gmMat(true); }, true); }
+  function gmMat(onlyForm) {
+    var f = { title: h("input", { placeholder: "자료 제목" }), desc: h("input", { placeholder: "한 줄 설명(마우스를 올리면 보임)" }), detail: h("textarea", { placeholder: "상세 내용" }), zone: zoneSel(state.zones[0].id), mode: h("select", {}, h("option", { value: "auto" }, "자동 발견"), h("option", { value: "manual" }, "수동 공개")),
+      cond: h("select", {}, h("option", { value: "success" }, "조사 성공 시"), h("option", { value: "investigate" }, "조사하면 발견"), h("option", { value: "enter" }, "구역 진입 시")),
+      to: h("select", {}, h("option", { value: "all" }, "전체 플레이어"), state.players.map(function (p) { return h("option", { value: p.id }, p.name + "만"); })), item: h("input", { placeholder: "함께 지급할 아이템(선택)" }) }, img = "";
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("div", { class: "list" }, (onlyForm ? [] : state.materials).map(function (m) {
+        return h("div", { class: "item", style: "flex-wrap:wrap" }, h("span", { style: "display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex:1 1 200px" },
+            h("input", { value: m.title, "aria-label": "자료 이름", style: "flex:1 1 140px", onchange: function () { m.title = this.value.trim() || m.title; commit(); } }),
+            h("span", { class: "soft" }, zname(m.zone) + " · " + (m.mode === "auto" ? "자동" : "수동") + " · 발견 " + m.found.map(function (i) { return P(i).name; }).join(", "))),
+          h("span", { class: "row" }, h("select", { style: "width:auto", id: "rv-" + m.id }, h("option", { value: "all" }, "전체에게 공개"), state.players.map(function (p) { return h("option", { value: p.id }, p.name + "에게 공개"); })),
+            h("button", { class: "sm", onclick: function () { var v = $("rv-" + m.id).value; (v === "all" ? state.players.map(function (p) { return p.id; }) : [v]).forEach(function (id) { if (m.found.indexOf(id) < 0) discover(m, id); }); commit(); refreshModal(); } }, "공개"),
+            h("button", { class: "danger sm", onclick: function () { state.materials = state.materials.filter(function (x) { return x.id !== m.id; }); commit(); refreshModal(); } }, "삭제")));
+      })),
+      h("h3", {}, "자료 등록"), h("div", { class: "f2" }, h("label", {}, "제목", f.title), h("label", {}, "설명", f.desc), h("label", {}, "발견 가능 구역", f.zone), h("label", {}, "공개 방식", f.mode), h("label", {}, "자동 발견 조건", f.cond), h("label", {}, "공개 대상", f.to), h("label", {}, "아이템", f.item)),
+      h("label", {}, "상세 내용", f.detail), h("label", {}, "이미지", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { img = d; }); } })),
+      h("button", { onclick: function () {
+        if (!f.title.value.trim()) return;
+        state.materials.push({ id: "a" + uid(), title: f.title.value.trim(), desc: f.desc.value, detail: f.detail.value, zone: f.zone.value, mode: f.mode.value, cond: f.mode.value === "auto" ? f.cond.value : "", visibleTo: f.to.value, found: [], item: f.item.value.trim(), img: img });
+        commit(); if (onlyForm) { closeModal(); toast("자료를 등록했습니다."); } else refreshModal();
+      } }, "등록"));
+  }
+  function rollItems(p) {
+    state.items.forEach(function (it) {
+      if (it.zone !== p.zone) return;
+      if (it.unique && state.players.some(function (q) { return q.inv.some(function (s) { return s && s.itemId === it.id; }); })) return;
+      if (1 + Math.floor(Math.random() * 100) > it.chance) return;
+      var i = p.inv.indexOf(null);
+      if (i < 0) { say("investigate", "시스템", p.name + " 아이템 '" + it.name + "'을(를) 발견했지만 인벤토리가 가득 차 가져가지 못했습니다.", { to: p.id }); return; }
+      p.inv[i] = { name: it.name, itemId: it.id };
+      say("investigate", "시스템", p.name + " 아이템 발견: " + it.name + " (인벤토리에 추가됨)", { to: p.id });
+    });
+  }
+  function openItem(slot) {
+    var it = state.items.filter(function (x) { return x.id === slot.itemId; })[0];
+    openModal(slot.name, function () {
+      if (!it) return h("p", { class: "soft" }, "등록된 설명이 없는 아이템입니다.");
+      return h("div", { class: "mbody", style: "padding:0" }, it.img ? h("img", { src: it.img, alt: it.name, style: "max-width:100%" }) : null, h("p", { class: "soft" }, it.desc), h("p", { style: "white-space:pre-wrap" }, it.detail));
+    });
+  }
+  function openAddItem() { openModal("아이템 등록", function () { return gmItem(true); }, true); }
+  function gmItem(onlyForm) {
+    var f = { name: h("input", { placeholder: "아이템 이름" }), desc: h("input", { placeholder: "한 줄 설명" }), detail: h("textarea", { placeholder: "상세 설명" }), zone: zoneSel(state.zones[0].id), chance: h("input", { type: "number", min: 0, max: 100, value: 20 }), uniq: h("input", { type: "checkbox", checked: true }) }, img = "";
+    var form = h("div", { class: "mbody", style: "padding:0" },
+      h("h3", {}, "아이템 등록 (미리 만들어 두면 해당 구역을 조사할 때 확률로 발견)"),
+      h("div", { class: "f2" }, h("label", {}, "이름", f.name), h("label", {}, "설명", f.desc), h("label", {}, "발견 구역", f.zone), h("label", {}, "발견 확률(%)", f.chance)),
+      h("label", {}, "상세 설명", f.detail),
+      h("label", {}, "이미지", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { img = d; }); } })),
+      h("label", { style: "flex-direction:row;align-items:center;color:var(--ink)" }, f.uniq, "한 번에 한 명만 가질 수 있음 (누군가 가지고 있는 동안은 발견되지 않음)"),
+      h("button", { onclick: function () {
+        if (!f.name.value.trim()) { f.name.focus(); return; }
+        state.items.push({ id: "i" + uid(), name: f.name.value.trim(), desc: f.desc.value, detail: f.detail.value, img: img, zone: f.zone.value, chance: Math.max(0, Math.min(100, +f.chance.value || 0)), unique: f.uniq.checked });
+        commit(); if (onlyForm) { closeModal(); toast("아이템을 등록했습니다."); } else refreshModal();
+      } }, "등록"));
+    if (onlyForm) return form;
+    var cat = h("div", { class: "list" }, state.items.length ? state.items.map(function (it) {
+      return h("div", { class: "item", style: "flex-wrap:wrap" },
+        h("input", { value: it.name, "aria-label": "아이템 이름", style: "flex:1 1 120px", onchange: function () {
+          it.name = this.value.trim() || it.name;
+          state.players.forEach(function (q) { q.inv.forEach(function (s) { if (s && s.itemId === it.id) s.name = it.name; }); }); fillRole(); commit();
+        } }),
+        h("input", { value: it.desc, "aria-label": "설명", placeholder: "설명", style: "flex:2 1 150px", onchange: function () { it.desc = this.value; commit(); } }),
+        h("input", { value: it.detail, "aria-label": "상세 설명", placeholder: "상세 설명", style: "flex:3 1 200px", onchange: function () { it.detail = this.value; commit(); } }),
+        h("select", { style: "width:auto", "aria-label": "발견 구역", onchange: function () { it.zone = this.value; commit(); }, value: it.zone }, state.zones.map(function (z) { return h("option", { value: z.id }, z.name); })),
+        h("input", { type: "number", min: 0, max: 100, value: it.chance, style: "width:64px", "aria-label": "발견 확률(%)", onchange: function () { it.chance = Math.max(0, Math.min(100, +this.value || 0)); commit(); } }),
+        h("label", { style: "flex-direction:row;align-items:center;color:var(--ink)" }, h("input", { type: "checkbox", checked: it.unique || null, onchange: function () { it.unique = this.checked; commit(); } }), "1명만"),
+        h("button", { class: "danger sm", onclick: function () { state.items = state.items.filter(function (x) { return x.id !== it.id; }); commit(); refreshModal(); } }, "목록에서 삭제"));
+    }) : h("p", { class: "soft" }, "등록된 아이템이 없습니다."));
+    var pid = ui.gmPid, p = P(pid);
+    var cs = h("select", {}, h("option", { value: "" }, "등록된 아이템 선택"), state.items.map(function (it) { return h("option", { value: it.id }, it.name); }));
+    var custom = h("input", { placeholder: "또는 임시 아이템 이름 직접 입력" });
+    var slot = h("select", {}, h("option", { value: "" }, "빈 칸 자동"), [1, 2, 3, 4, 5, 6, 7, 8].map(function (n) { return h("option", { value: n - 1 }, "칸 " + n); }));
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("h3", {}, "등록된 아이템 (여기서 지워도 플레이어가 가진 아이템은 그대로입니다)"), cat, form,
+      h("h3", {}, "플레이어 인벤토리"),
+      h("label", {}, "플레이어", h("select", { onchange: function () { ui.gmPid = this.value; refreshModal(); }, value: pid }, state.players.map(function (x) { return h("option", { value: x.id }, x.name); }))),
+      h("div", { class: "list" }, p.inv.map(function (it, i) {
+        return h("div", { class: "item" }, h("span", {}, "칸 " + (i + 1) + ": " + (it ? it.name : "비어 있음")),
+          it ? h("button", { class: "danger sm", onclick: function () { p.inv[i] = null; say("system", "시스템", p.name + "의 아이템 '" + it.name + "'이(가) 제거되었습니다.", { to: p.id }); commit(); refreshModal(); } }, "제거") : null);
+      })),
+      h("div", { class: "row" }, h("label", { style: "flex:1 1 160px" }, "지급할 아이템", cs), h("label", { style: "flex:1 1 160px" }, "임시 아이템", custom), h("label", {}, "칸", slot),
+        h("button", { onclick: function () {
+          var it = state.items.filter(function (x) { return x.id === cs.value; })[0], name = it ? it.name : custom.value.trim();
+          if (!name) return;
+          var i = slot.value === "" ? p.inv.indexOf(null) : +slot.value;
+          if (i < 0) { toast("빈 칸이 없습니다."); return; }
+          p.inv[i] = it ? { name: it.name, itemId: it.id } : { name: name };
+          say("system", "시스템", p.name + "에게 아이템 '" + name + "'이(가) 지급되었습니다.", { to: p.id }); commit(); refreshModal();
+        } }, "지급")));
+  }
+  function gmNpc() {
+    var f = { name: h("input", { placeholder: "NPC 이름" }), desc: h("input", { placeholder: "설명" }), zone: zoneSel(state.zones[0].id) }, img = "";
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("div", { class: "list" }, state.npcs.map(function (n) {
+        return h("div", { class: "item", style: "flex-wrap:wrap" },
+          h("input", { value: n.name, "aria-label": "NPC 이름", style: "flex:1 1 130px", onchange: function () { n.name = this.value.trim() || n.name; fillChatSelects(); commit(); } }),
+          h("input", { value: n.desc, "aria-label": "NPC 설명", placeholder: "설명", style: "flex:2 1 180px", onchange: function () { n.desc = this.value; commit(); } }),
+          h("select", { style: "width:auto", "aria-label": "NPC 위치", onchange: function () { n.zone = this.value; commit(); }, value: n.zone }, state.zones.map(function (z) { return h("option", { value: z.id }, z.name); })),
+          h("input", { type: "file", accept: "image/*", style: "width:150px", "aria-label": "NPC 이미지", onchange: function () { readImg(this.files[0], function (d) { n.img = d; commit(); toast("이미지를 바꿨습니다."); }); } }),
+          fileBtn(n.dot ? "토큰 변경" : "토큰 올리기", function (d) { n.dot = d; commit(); toast("NPC 토큰 이미지를 바꿨습니다."); }, TOKOPT),
+          h("label", { style: "flex-direction:row;align-items:center;gap:4px;color:var(--ink)" }, h("input", { type: "checkbox", checked: n.onmap !== false || null, onchange: function () { n.onmap = this.checked; commit(); } }), "지도에 표시"),
+          h("button", { class: "ghost sm", onclick: function () { n.visible = !n.visible; commit(); refreshModal(); } }, n.visible ? "퇴장" : "등장"),
+          h("button", { class: "danger sm", onclick: function () { state.npcs = state.npcs.filter(function (x) { return x.id !== n.id; }); fillChatSelects(); commit(); refreshModal(); } }, "삭제"));
+      })),
+      h("h3", {}, "NPC 생성"), h("div", { class: "f2" }, h("label", {}, "이름", f.name), h("label", {}, "설명", f.desc), h("label", {}, "위치", f.zone)),
+      h("label", {}, "프로필 이미지", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { img = d; }); } })),
+      h("button", { onclick: function () { if (!f.name.value.trim()) return; state.npcs.push({ id: "n" + uid(), name: f.name.value.trim(), desc: f.desc.value, zone: f.zone.value, visible: true, img: img, dot: "", onmap: true, mx: 50, my: 50 }); fillChatSelects(); commit(); refreshModal(); } }, "생성"),
+      h("p", { class: "soft" }, "중앙의 현장 NPC 목록에서 이름을 누르거나 채팅창의 발언자 선택에서 NPC를 고르면 그 NPC로 대사를 칠 수 있습니다."));
+  }
+  function gmMon() {
+    var f = { name: h("input", { placeholder: "괴물 이름" }), hp: h("input", { type: "number", value: 100 }), atk: h("input", { type: "number", value: 10 }), ab: h("input", { placeholder: "특수 능력" }), zone: zoneSel(state.zones[0].id) }, img = "";
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("div", { class: "list" }, state.monsters.map(function (m) {
+        var hp = h("input", { type: "number", value: m.hp, style: "width:70px", onchange: function () { m.hp = +this.value; commit(); } });
+        var zs = h("select", { style: "width:auto", onchange: function () { m.zone = this.value; commit(); refreshModal(); }, value: m.zone }, state.zones.map(function (z) { return h("option", { value: z.id }, z.name); }));
+        return h("div", { class: "item", style: "flex-wrap:wrap" }, h("span", { style: "display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex:1 1 200px" }, h("input", { value: m.name, "aria-label": "괴물 이름", style: "flex:1 1 140px", onchange: function () { m.name = this.value.trim() || m.name; commit(); } }), h("span", { class: "soft" }, "공격력 " + m.atk + " · " + (m.ability || "특수 능력 없음") + " · " + (m.summoned ? "출현 중" : "대기"))),
+          h("span", { class: "row", style: "align-items:center" }, "HP", hp, zs,
+            h("button", { class: m.summoned ? "ghost sm" : "danger sm", onclick: function () { m.summoned ? (m.summoned = false, say("system", "시스템", m.name + "이(가) 물러났습니다.")) : summon(m); commit(); refreshModal(); } }, m.summoned ? "퇴장" : "소환"),
+            h("button", { class: "ghost sm", onclick: function () { state.monsters = state.monsters.filter(function (x) { return x.id !== m.id; }); commit(); refreshModal(); } }, "삭제")));
+      })),
+      h("h3", {}, "괴물 추가 (이성 수치 없음)"), h("div", { class: "f2" }, h("label", {}, "이름", f.name), h("label", {}, "체력", f.hp), h("label", {}, "공격력", f.atk), h("label", {}, "특수 능력", f.ab), h("label", {}, "출현 구역", f.zone)),
+      h("label", {}, "이미지", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { img = d; }); } })),
+      h("button", { onclick: function () { if (!f.name.value.trim()) return; state.monsters.push({ id: "m" + uid(), name: f.name.value.trim(), hp: +f.hp.value || 100, atk: +f.atk.value || 0, ability: f.ab.value, zone: f.zone.value, summoned: false, img: img }); commit(); refreshModal(); } }, "추가"));
+  }
+  function summon(m) {
+    m.summoned = true;
+    say("event", "시스템", "경고: " + zname(m.zone) + "에 괴물 '" + m.name + "'이(가) 출현했습니다.");
+    showFx(m);
+  }
+  function showFx(m) {
+    var fx = $("fx"); fx.hidden = false; fx.className = reduce ? "" : "shake";
+    fx.replaceChildren(h("div", { class: "fxin" }, m.img ? h("img", { src: m.img, alt: m.name }) : null, h("h2", {}, "경고"), h("p", { style: "font-size:20px" }, zname(m.zone) + " · " + m.name), h("p", { class: "soft" }, isGM() ? "플레이어 화면에는 이 연출이 동시에 나옵니다 (미리보기). 아무 곳이나 누르면 닫힙니다." : "아무 곳이나 누르면 닫힙니다.")));
+    clearTimeout(showFx.t); showFx.t = setTimeout(function () { fx.hidden = true; }, 4000);
+  }
+  $("fx").addEventListener("click", function () { this.hidden = true; });
+  function gmTime() {
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("p", {}, "현재 " + state.day + "일차 " + SLOTS[state.slot]), h("button", { class: "brass", onclick: function () { nextSlot(); refreshModal(); } }, "다음 시간대로 (조사 횟수 4회로 초기화)"),
+      h("div", { class: "list" }, state.players.map(function (p) {
+        var n = h("input", { type: "number", min: 0, max: 99, value: p.inves, style: "width:70px", onchange: function () { p.inves = Math.max(0, +this.value || 0); commit(); } });
+        return h("div", { class: "item" }, h("span", {}, p.name, " · ", zname(p.zone)), h("span", { class: "row", style: "align-items:center" }, "남은 조사", n));
+      })));
+  }
+  function gmEv() {
+    var t = h("input", { placeholder: "공지 내용" });
+    return h("div", { class: "mbody", style: "padding:0" },
+      h("div", { class: "row" }, h("label", { style: "flex:1" }, "GM 공지", t), h("button", { onclick: function () { if (!t.value.trim()) return; say("system", "공지", t.value.trim(), { authorId: "GM" }); commit(); t.value = ""; } }, "전체에 공지")),
+      h("h3", {}, "BGM"),
+      h("label", {}, "BGM 파일 올리기 (mp3, m4a, wav, ogg 등 · 여러 개 선택 가능 · 파일당 40MB 이하)", h("input", { type: "file", accept: "audio/*,.mp3,.m4a,.wav,.ogg,.aac,.flac", multiple: true, onchange: function () { bgmAdd(this.files); this.value = ""; } })),
+      h("div", { class: "list" }, bgm.list.length ? bgm.list.map(function (tr) {
+        return h("div", { class: "item" }, h("span", {}, tr.name),
+          h("span", { class: "row" }, h("button", { class: "sm", onclick: function () { bgmPlay(tr.id); } }, "재생"), h("button", { class: "ghost sm", onclick: function () { $("bgm").pause(); } }, "정지"),
+            h("button", { class: "danger sm", onclick: function () { bgmDel(tr.id); refreshModal(); } }, "삭제")));
+      }) : h("p", { class: "soft" }, "올린 BGM이 없습니다.")),
+      h("p", { class: "soft" }, "BGM 파일은 이 브라우저에 저장되고, 재생은 이 화면에서만 됩니다. 모든 접속자에게 동시에 재생되는 기능은 서버가 있어야 해서 아직 없습니다. 효과음 관리도 아직 없습니다. 괴물 소환 연출은 괴물 탭의 소환 버튼으로 실행합니다."));
+  }
+
+  fillRole();  fillRole(); paintTimer(); paintSave(); bgmLoad(); render();
+})();
+</script>
+</body>
+</html>

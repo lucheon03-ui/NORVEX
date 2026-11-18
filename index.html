@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NORVEX</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.97.0/dist/umd/supabase.js"></script>
+<script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.97.0/dist/umd/supabase.js"><\/script>');}</script>
+<style>
+:root{
+  --bg:#050805; --panel:#0b120b; --panel2:#111d11; --fg:#b7ffb7; --muted:#70a870; --line:#245b24;
+  --accent:#39ff14; --accent-fg:#031003; --ok:#65ff65; --warn:#d7ff45; --gm:#b7ff4a; --whisper:#55e6c1;
+  --shadow:0 6px 24px rgba(0,255,40,.10);
+}
+:root[data-mode="night"]{
+  --bg:#050805; --panel:#0b120b; --panel2:#111d11; --fg:#b7ffb7; --muted:#70a870; --line:#245b24;
+  --accent:#39ff14; --accent-fg:#031003; --ok:#65ff65; --warn:#d7ff45; --gm:#b7ff4a; --whisper:#55e6c1;
+  --shadow:0 6px 24px rgba(0,255,40,.10); color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 "Pretendard","Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-family:"Noto Serif KR",Georgia,serif;letter-spacing:.02em}
+.hide{display:none!important}
+.wrap{max-width:880px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-left,0px)) 40px max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.brand b{font-family:Georgia,serif;font-size:30px;letter-spacing:.28em;color:var(--accent)}
+.brand span{color:var(--muted);font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow);margin-top:16px}
+.card h2{font-size:18px;margin-bottom:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{min-width:0}
+input[type=text],input[type=password]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--bg);outline:none}
+input:focus,textarea:focus{border-color:var(--accent)}
+label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+.btn{padding:9px 14px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn.danger{color:var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.muted{color:var(--muted)} .small{font-size:12.5px}
+.err{color:var(--accent);font-size:13px;margin-top:8px;white-space:pre-wrap}
+.tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.tag.gm{color:var(--gm);border-color:var(--gm)} .tag.ok{color:var(--ok);border-color:var(--ok)} .tag.wait{color:var(--warn);border-color:var(--warn)}
+.list{display:grid;gap:8px;margin-top:8px}
+.item{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.item .t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:440px;width:100%;box-shadow:var(--shadow)}
+.code{font:700 22px/1.3 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;padding:12px;border:2px dashed var(--accent);border-radius:10px;text-align:center;margin:12px 0;user-select:all;word-break:break-all}
+.topbar{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-bottom:6px}
+/* room */
+#room{display:flex;flex-direction:column;height:100dvh}
+.rhead{display:flex;gap:10px;align-items:center;padding:10px max(14px,env(safe-area-inset-left,0px)) 10px max(14px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--panel);padding-top:max(10px,env(safe-area-inset-top,0px))}
+.rhead h2{font-size:17px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rbody{flex:1;display:flex;min-height:0}
+.chat{flex:1;display:flex;flex-direction:column;min-width:0}
+.msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:85%;padding:8px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);align-self:flex-start;word-break:break-word;white-space:pre-wrap}
+.msg .who{font-size:12px;color:var(--muted);margin-bottom:2px}
+.msg.me{align-self:flex-end;background:var(--panel2)}
+.msg.gm{border-color:var(--gm)} .msg.gm .who{color:var(--gm)}
+.msg.system{align-self:center;background:transparent;border:none;color:var(--muted);font-size:13px;text-align:center}
+.msg.whisper{border-style:dashed;border-color:var(--whisper)} .msg.whisper .who{color:var(--whisper)}
+.compose{border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:var(--panel);display:grid;gap:8px}
+.compose .row input[type=text]{flex:1}
+.side{width:280px;border-left:1px solid var(--line);background:var(--panel);overflow-y:auto;padding:12px}
+.side h3{font-size:14px;margin:6px 0}
+@media (max-width:760px){
+  .rbody{flex-direction:column}
+  .side{width:100%;border-left:none;border-top:1px solid var(--line);max-height:38vh}
+  .side.collapsed{display:none}
+}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:99px;z-index:99;font-size:14px;max-width:90vw}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ===== 설정: 프로젝트 주소와 공개(publishable) 키만 넣습니다. 비밀(secret) 키는 절대 넣지 마세요 ===== */
+const SUPABASE_URL = "https://fhbptdhqggyceplsetdg.supabase.co";
+const SUPABASE_KEY = "sb_publishable_ME8UWQdoymI6-ZooBSn6FA_qXlvrviZ";
+/* ============================================================================================== */
+
+const $app = document.getElementById('app');
+const LS = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+function h(tag, attrs, ...kids){
+  const el = document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs||{})){
+    if(v==null||v===false) continue;
+    if(k==='class') el.className=v;
+    else if(k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else if(k==='value') el.value=v;
+    else el.setAttribute(k, v===true?'':v);
+  }
+  for(const kid of kids.flat()){
+    if(kid==null||kid===false) continue;
+    el.append(kid.nodeType?kid:document.createTextNode(String(kid)));
+  }
+  return el;
+}
+function toast(msg){
+  const t=h('div',{class:'toast'},msg); document.body.append(t); setTimeout(()=>t.remove(),2600);
+}
+async function copyText(txt){
+  try{ await navigator.clipboard.writeText(txt); toast('복사했어요'); }
+  catch(e){ toast('길게 눌러 직접 복사해 주세요'); }
+}
+function friendly(err){
+  const m=(err&&err.message)||String(err);
+  const map={
+    'not_logged_in':'로그인 상태가 아니에요. 새로고침해 주세요.',
+  };
+  return map[m]||m;
+}
+
+let sb=null, me=null, name=LS.get('nx_name')||'';
+let ch=null, pollTimer=null, current=null;
+
+/* ---------- 모드 ---------- */
+function applyMode(){ document.documentElement.dataset.mode = LS.get('nx_mode')||'day'; }
+function toggleMode(){ LS.set('nx_mode',(LS.get('nx_mode')||'day')==='day'?'night':'day'); applyMode(); }
+applyMode();
+
+/* ---------- 시작 ---------- */
+async function boot(){
+  $app.replaceChildren(h('div',{class:'wrap'},h('p',{class:'muted'},'접속 중…')));
+  if(!window.supabase){ return fatal('Supabase 라이브러리를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.'); }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:true,autoRefreshToken:true,storage:window.localStorage}});
+  let {data:{session}} = await sb.auth.getSession();
+  if(!session){
+    const {data,error} = await sb.auth.signInAnonymously();
+    if(error) return fatal('익명 로그인에 실패했어요: '+error.message+'\n\nSupabase → Authentication → Sign In / Providers 에서 "Allow anonymous sign-ins" 가 켜져 있는지 확인해 주세요.');
+    session=data.session;
+  }
+  me=session.user;
+  name ? showLobby() : showName();
+}
+function fatal(msg){
+  $app.replaceChildren(h('div',{class:'wrap'},brand(),h('div',{class:'card'},h('h2',{},'문제가 생겼어요'),h('div',{class:'err'},msg),h('div',{class:'row',style:'margin-top:12px'},h('button',{class:'btn',onclick:()=>location.reload()},'새로고침')))));
+}
+function brand(){
+  return h('div',{},
+    h('div',{class:'topbar'},),
+    h('div',{class:'brand'},h('b',{},'NORVEX'),h('span',{},'미스터리 조사 TRPG'))
+  );
+}
+
+/* ---------- 이름 입력 ---------- */
+function showName(){
+  const inp=h('input',{type:'text',maxlength:'20',placeholder:'표시할 이름',value:name});
+  const err=h('div',{class:'err'});
+  const go=()=>{
+    const v=inp.value.trim();
+    if(!v){ err.textContent='이름을 입력해 주세요.'; return; }
+    name=v; LS.set('nx_name',v); showLobby();
+  };
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+  $app.replaceChildren(h('div',{class:'wrap'},brand(),
+    h('div',{class:'card'},h('h2',{},'이름을 알려 주세요'),
+      h('p',{class:'muted small'},'가입 없이 이름만으로 접속해요. 같은 브라우저로 다시 오면 같은 사람으로 이어져요.'),
+      inp,err,h('div',{class:'row',style:'margin-top:12px'},h('button',{class:'btn pri',onclick:go},'들어가기')))));
+  inp.focus();
+}
+
+/* ---------- 로비 ---------- */
+async function showLobby(){
+  leaveRoom();
+  const listBox=h('div',{class:'list'},h('div',{class:'muted small'},'불러오는 중…'));
+  const err=h('div',{class:'err'});
+  const roomName=h('input',{type:'text',maxlength:'60',placeholder:'방 이름 (예: 노벡스 저택 살인사건)'});
+  const code=h('input',{type:'text',maxlength:'20',placeholder:'초대 코드 (8자리)'});
+
+  const create=async()=>{
+    err.textContent='';
+    const n=roomName.value.trim(); if(!n){err.textContent='방 이름을 입력해 주세요.';return;}
+    const {data,error}=await sb.rpc('create_room',{p_name:n,p_display:name});
+    if(error){err.textContent=friendly(error);return;}
+    showRecovery(data.recovery_code,'방이 만들어졌어요',()=>openRoom(data.room_id));
+  };
+  const join=async()=>{
+    err.textContent='';
+    const c=code.value.trim().toLowerCase(); if(!c){err.textContent='초대 코드를 입력해 주세요.';return;}
+    const {data,error}=await sb.rpc('join_room',{p_code:c,p_display:name});
+    if(error){err.textContent=friendly(error);return;}
+    toast('입장 요청을 보냈어요. GM의 승인을 기다려 주세요.');
+    code.value=''; loadMine(listBox);
+  };
+
+  $app.replaceChildren(h('div',{class:'wrap'},brand(),
+    h('div',{class:'card'},h('div',{class:'row',style:'justify-content:space-between'},
+      h('div',{},h('b',{},name),h('span',{class:'muted small'},' 님')),
+      h('button',{class:'btn sm',onclick:showName},'이름 변경'))),
+    h('div',{class:'card'},h('h2',{},'내 방'),listBox),
+    h('div',{class:'card'},h('h2',{},'새 방 만들기 (내가 GM)'),roomName,
+      h('div',{class:'row',style:'margin-top:10px'},h('button',{class:'btn pri',onclick:create},'방 만들기'))),
+    h('div',{class:'card'},h('h2',{},'초대 코드로 입장'),code,
+      h('div',{class:'row',style:'margin-top:10px'},h('button',{class:'btn pri',onclick:join},'입장 요청'))),
+    h('div',{class:'card'},h('h2',{},'GM 권한 복구'),
+      h('p',{class:'muted small'},'브라우저를 바꾸거나 기록을 지워 GM 자리를 잃었다면, 방의 초대 코드와 복구 코드로 되찾을 수 있어요.'),
+      h('button',{class:'btn',onclick:showReclaim},'복구 코드로 GM 되찾기')),
+    err));
+  loadMine(listBox);
+}
+async function loadMine(box){
+  const {data:mem,error}=await sb.from('members').select('room_id,role,status,display_name,created_at').eq('user_id',me.id).order('created_at',{ascending:false});
+  if(error){box.replaceChildren(h('div',{class:'err'},friendly(error)));return;}
+  if(!mem.length){box.replaceChildren(h('div',{class:'muted small'},'아직 참여한 방이 없어요.'));return;}
+  const ids=mem.filter(m=>m.status==='approved').map(m=>m.room_id);
+  let rooms={};
+  if(ids.length){ const {data}=await sb.from('rooms').select('id,name,invite_code').in('id',ids); (data||[]).forEach(r=>rooms[r.id]=r); }
+  box.replaceChildren(...mem.map(m=>{
+    const r=rooms[m.room_id];
+    if(m.status==='pending') return h('div',{class:'item'},h('span',{class:'t'},'승인 대기 중인 방'),h('span',{class:'tag wait'},'대기'));
+    if(m.status==='rejected') return h('div',{class:'item'},h('span',{class:'t'},'입장이 거절된 방'),h('span',{class:'tag'},'거절'));
+    return h('div',{class:'item'},
+      h('span',{class:'t'},r?r.name:'(이름 없음)',' ',h('span',{class:'tag '+(m.role==='gm'?'gm':'')},m.role==='gm'?'GM':'플레이어')),
+      h('button',{class:'btn sm pri',onclick:()=>openRoom(m.room_id)},'입장'));
+  }));
+}
+
+/* ---------- 복구 코드 ---------- */
+function showRecovery(codeStr,title,after){
+  const m=h('div',{class:'modal'},h('div',{class:'box'},
+    h('h2',{},title),
+    h('p',{class:'small'},'아래 ',h('b',{},'복구 코드'),'는 지금 한 번만 보여 드려요. 브라우저를 바꾸거나 기록이 지워졌을 때 GM 자리를 되찾는 유일한 방법이니 꼭 따로 적어 두세요.'),
+    h('div',{class:'code'},codeStr),
+    h('div',{class:'row'},
+      h('button',{class:'btn',onclick:()=>copyText(codeStr)},'복사'),
+      h('button',{class:'btn pri',onclick:()=>{m.remove();after&&after();}},'적어 뒀어요'))));
+  document.body.append(m);
+}
+function showReclaim(){
+  const inv=h('input',{type:'text',placeholder:'방 초대 코드'});
+  const rc=h('input',{type:'text',placeholder:'복구 코드'});
+  const err=h('div',{class:'err'});
+  const m=h('div',{class:'modal'},h('div',{class:'box'},
+    h('h2',{},'GM 권한 복구'),
+    h('label',{class:'f'},'초대 코드'),inv,h('label',{class:'f'},'복구 코드'),rc,err,
+    h('div',{class:'row',style:'margin-top:12px'},
+      h('button',{class:'btn',onclick:()=>m.remove()},'취소'),
+      h('button',{class:'btn pri',onclick:async()=>{
+        err.textContent='';
+        const {data,error}=await sb.rpc('reclaim_gm',{p_invite:inv.value.trim().toLowerCase(),p_code:rc.value.trim(),p_display:name});
+        if(error){err.textContent=friendly(error);return;}
+        if(!data||!data.ok){err.textContent=(data&&data.message)||'복구하지 못했어요.';return;}
+        m.remove();
+        showRecovery(data.recovery_code,'GM 자리를 되찾았어요',()=>openRoom(data.room_id));
+      }},'복구'))));
+  document.body.append(m);
+}
+
+/* ---------- 방 ---------- */
+function leaveRoom(){
+  if(ch){ try{sb.removeChannel(ch);}catch(e){} ch=null; }
+  if(pollTimer){ clearInterval(pollTimer); pollTimer=null; }
+  current=null;
+}
+async function openRoom(roomId){
+  leaveRoom();
+  const {data:room,error}=await sb.from('rooms').select('id,name,invite_code,gm_id').eq('id',roomId).maybeSingle();
+  if(error||!room){ toast('방을 열 수 없어요. 승인 대기 중이거나 권한이 없어요.'); return showLobby(); }
+  const isGM = room.gm_id===me.id;
+  current={room,isGM,members:[],msgs:[],lastId:0,whisperTo:null};
+
+  const msgsEl=h('div',{class:'msgs'});
+  const side=h('div',{class:'side'});
+  const input=h('input',{type:'text',maxlength:'2000',placeholder:'메시지를 입력하세요'});
+  const target=h('select',{},h('option',{value:''},'전체에게'));
+  const send=async()=>{
+    const body=input.value.trim(); if(!body) return;
+    const to=target.value||null;
+    const row={room_id:room.id,type:isGM?'gm':'player',author:isGM?(name+' (GM)'):myAuthor(),body,to_user:to};
+    input.value='';
+    const {error}=await sb.from('chat_messages').insert(row);
+    if(error){ toast('전송 실패: '+friendly(error)); input.value=body; }
+    else fetchMsgs();
+  };
+  input.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.isComposing) send(); });
+  current.el={msgs:msgsEl,side,target};
+
+  const sideToggle=h('button',{class:'btn sm',onclick:()=>side.classList.toggle('collapsed')},'참가자');
+  $app.replaceChildren(h('div',{id:'room'},
+    h('div',{class:'rhead'},
+      h('button',{class:'btn sm',onclick:showLobby},'← 로비'),
+      h('h2',{},room.name),
+      h('button',{class:'btn sm pri',onclick:()=>location.href='NORVEX.html?room='+encodeURIComponent(room.id)},'게임 화면 입장'),
+      h('span',{class:'tag '+(isGM?'gm':'')},isGM?'GM':'플레이어'),
+      sideToggle,
+      ),
+    h('div',{class:'rbody'},
+      h('div',{class:'chat'},msgsEl,
+        h('div',{class:'compose'},
+          h('div',{class:'row'},target),
+          h('div',{class:'row'},input,h('button',{class:'btn pri',onclick:send},'보내기')))),
+      side)));
+  if(window.innerWidth<=760) side.classList.add('collapsed');
+
+  await fetchMembers(); await fetchMsgs(true);
+  ch=sb.channel('room-'+room.id)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages',filter:'room_id=eq.'+room.id},()=>fetchMsgs())
+    .on('postgres_changes',{event:'*',schema:'public',table:'members',filter:'room_id=eq.'+room.id},()=>fetchMembers())
+    .subscribe();
+  pollTimer=setInterval(()=>{ fetchMsgs(); fetchMembers(); },6000);
+}
+function myAuthor(){
+  const m=current.members.find(x=>x.user_id===me.id);
+  return (m&&m.display_name)||name;
+}
+async function fetchMembers(){
+  if(!current) return;
+  const {data,error}=await sb.from('members').select('user_id,role,status,display_name').eq('room_id',current.room.id).order('created_at');
+  if(error||!current) return;
+  current.members=data; renderSide();
+}
+function renderSide(){
+  const {isGM,room,members}=current;
+  const approved=members.filter(m=>m.status==='approved');
+  const pending=members.filter(m=>m.status==='pending');
+  const kids=[];
+  kids.push(h('h3',{},'초대 코드'),
+    h('div',{class:'row'},h('code',{style:'font-size:16px;letter-spacing:.1em'},room.invite_code),h('button',{class:'btn sm',onclick:()=>copyText(room.invite_code)},'복사')));
+  if(isGM && pending.length){
+    kids.push(h('h3',{},'입장 요청 ('+pending.length+')'));
+    pending.forEach(p=>kids.push(h('div',{class:'item'},h('span',{class:'t'},p.display_name||'(이름 없음)'),
+      h('span',{class:'row'},
+        h('button',{class:'btn sm pri',onclick:()=>decide(p.user_id,true)},'승인'),
+        h('button',{class:'btn sm',onclick:()=>decide(p.user_id,false)},'거절')))));
+  }
+  kids.push(h('h3',{},'참가자 ('+approved.length+')'));
+  const lst=h('div',{class:'list'});
+  approved.forEach(p=>{
+    lst.append(h('div',{class:'item'},
+      h('span',{class:'t'},p.display_name||'(이름 없음)',p.user_id===me.id?' (나)':'',' ',h('span',{class:'tag '+(p.role==='gm'?'gm':'')},p.role==='gm'?'GM':'')),
+      isGM&&p.role!=='gm'?h('button',{class:'btn sm danger',onclick:()=>kick(p)},'내보내기'):null));
+  });
+  kids.push(lst);
+  if(isGM){
+    kids.push(h('h3',{style:'margin-top:16px'},'GM 도구'),
+      h('button',{class:'btn sm',onclick:async()=>{
+        const {data,error}=await sb.rpc('regen_recovery_code',{p_room:room.id});
+        if(error) return toast(friendly(error));
+        showRecovery(data,'새 복구 코드',null);
+      }},'복구 코드 다시 만들기'),
+      h('p',{class:'muted small'},'다시 만들면 이전 복구 코드는 쓸 수 없어요.'));
+  }
+  current.el.side.replaceChildren(...kids);
+  // 귓속말 대상 갱신
+  const sel=current.el.target, prev=sel.value;
+  sel.replaceChildren(h('option',{value:''},'전체에게'));
+  if(isGM){ approved.filter(p=>p.role!=='gm').forEach(p=>sel.append(h('option',{value:p.user_id},'🔒 '+(p.display_name||'?')+' 에게 귓속말'))); }
+  else sel.append(h('option',{value:room.gm_id},'🔒 GM에게 귓속말'));
+  if([...sel.options].some(o=>o.value===prev)) sel.value=prev;
+}
+async function decide(uid,ok){
+  const {error}=await sb.rpc('decide_member',{p_room:current.room.id,p_user:uid,p_approve:ok});
+  if(error) toast(friendly(error)); else fetchMembers();
+}
+async function kick(p){
+  const box=h('div',{class:'modal'},h('div',{class:'box'},
+    h('h2',{},'내보낼까요?'),
+    h('p',{class:'small'},(p.display_name||'이 사람')+' 님을 방에서 내보내요. 상대는 초대 코드로 다시 입장 요청을 할 수 있어요.'),
+    h('div',{class:'row'},h('button',{class:'btn',onclick:()=>box.remove()},'취소'),
+      h('button',{class:'btn pri',onclick:async()=>{
+        box.remove();
+        const {error}=await sb.rpc('remove_member',{p_room:current.room.id,p_user:p.user_id});
+        if(error) toast(friendly(error)); else { toast('내보냈어요'); fetchMembers(); }
+      }},'내보내기'))));
+  document.body.append(box);
+}
+async function fetchMsgs(initial){
+  if(!current) return;
+  const rid=current.room.id;
+  let q=sb.from('chat_messages').select('id,type,author,author_user,body,to_user,created_at').eq('room_id',rid);
+  if(initial) q=q.order('id',{ascending:false}).limit(200); else q=q.gt('id',current.lastId).order('id',{ascending:true}).limit(200);
+  const {data,error}=await q;
+  if(error||!current||current.room.id!==rid) return;
+  let rows=initial?data.reverse():data;
+  if(!rows.length) { if(initial) renderMsgs([],true); return; }
+  current.lastId=rows[rows.length-1].id;
+  renderMsgs(rows,initial);
+}
+function renderMsgs(rows,replace){
+  const box=current.el.msgs;
+  const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<120;
+  if(replace) box.replaceChildren();
+  for(const m of rows){
+    const mine=m.author_user===me.id;
+    const whisper=!!m.to_user;
+    const cls='msg '+(m.type==='system'?'system ':'')+(m.type==='gm'?'gm ':'')+(mine?'me ':'')+(whisper?'whisper':'');
+    let who=m.author;
+    if(whisper){
+      const toName=(current.members.find(x=>x.user_id===m.to_user)||{}).display_name||'GM';
+      who+=' → '+(m.to_user===me.id?'나':toName)+' (귓속말)';
+    }
+    box.append(h('div',{class:cls.trim()},m.type==='system'?null:h('div',{class:'who'},who),m.body));
+  }
+  if(replace||nearBottom) box.scrollTop=box.scrollHeight;
+}
+
+boot();
+</script>
+</body>
+</html>
