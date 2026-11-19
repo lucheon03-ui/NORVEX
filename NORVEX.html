@@ -199,8 +199,8 @@ button.link:hover { color: var(--brass); background: none; }
   <span class="clock" id="clock"></span>
   <span class="grow"></span>
   <div class="group">
-    <label style="flex-direction:row;align-items:center;gap:6px">보는 화면
-      <select id="role" aria-label="시연용 역할 전환"></select>
+    <label style="flex-direction:row;align-items:center;gap:6px">플레이 캐릭터
+      <select id="role" aria-label="플레이할 캐릭터 선택"></select>
     </label>
     <span class="tag warn" id="rolebadge"></span>
   </div>
@@ -224,7 +224,7 @@ button.link:hover { color: var(--brass); background: none; }
     <button class="brass sm gm-only" id="gm-btn" type="button">GM 관리</button>
   </div>
 </div>
-<p class="banner" id="room-banner">프로토타입입니다. 로그인, 실시간 동기화, 서버 권한 보호는 아직 연결되지 않았습니다. 게임 데이터는 현재 이 브라우저에만 저장됩니다.</p>
+<p class="banner" id="room-banner">로비에서 승인된 방에 입장해 주세요. GM은 세션 저장을 할 수 있고 플레이어는 캐릭터를 선택해 진행할 수 있습니다.</p>
 
 <div class="grid">
   <div class="col" id="left"></div>
@@ -255,9 +255,13 @@ button.link:hover { color: var(--brass); background: none; }
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var roomIdFromLobby = new URLSearchParams(window.location.search).get("room");
+  var roomStorageKey = roomIdFromLobby ? "norvex.state." + roomIdFromLobby : "norvex.state";
+  var mapStorageKey = roomIdFromLobby ? "norvex.map." + roomIdFromLobby : "norvex.map";
+  var selectedCharacterKey = function (userId) { return "norvex.character." + roomIdFromLobby + "." + userId; };
   var SUPABASE_URL = "https://fhbptdhqggyceplsetdg.supabase.co";
   var SUPABASE_KEY = "sb_publishable_ME8UWQdoymI6-ZooBSn6FA_qXlvrviZ";
   var cloudClient = null, cloudReady = false, cloudUser = null;
+  var cloudRole = null, cloudMember = null, cloudChannel = null, applyingRemote = false;
   var cloudSaveQueue = Promise.resolve(), cloudSaveVersion = 0;
   var roomBanner = $("room-banner");
   if (roomBanner) {
@@ -336,7 +340,7 @@ button.link:hover { color: var(--brass); background: none; }
     };
   }
   var state, mapImg = "", ui = { role: "p1", gmOk: false, speaker: "gm", tab: "char", gmPid: "p1", key: "str", target: "p1", zoom: 1, mi: "p1", note: { day: 1, slot: 0, pid: "p1" }, modal: null };
-  try { state = JSON.parse(localStorage.getItem("norvex.state") || "null"); mapImg = localStorage.getItem("norvex.map") || ""; } catch (e) {}
+  try { state = JSON.parse(localStorage.getItem(roomStorageKey) || "null"); mapImg = localStorage.getItem(mapStorageKey) || ""; } catch (e) {}
   if (!state || !state.players) state = seed();
   if (!state.items) state.items = defaultItems();
   state.npcs.forEach(function (n, i) {
@@ -372,28 +376,28 @@ button.link:hover { color: var(--brass); background: none; }
   }
 
   var dirty = false, autosave = false, lastSaved = null;
-  try { autosave = localStorage.getItem("norvex.auto") === "1"; } catch (e) {}
   function paintSave() {
+    $("save-btn").hidden = !isGM();
+    $("auto-save").parentElement.hidden = true;
     $("save-btn").textContent = dirty ? "세션 저장 ●" : "세션 저장";
-    $("save-state").textContent = dirty ? "저장 안 됨" : (lastSaved ? "저장됨 " + clock(lastSaved) : "저장됨");
-    $("auto-save").checked = autosave;
+    $("save-state").textContent = dirty ? "저장 안 됨 · GM 저장 대기" : (lastSaved ? "저장됨 " + clock(lastSaved) : "저장본 없음");
+  }
+  function cacheRoomState() {
+    try {
+      localStorage.setItem(roomStorageKey, JSON.stringify(state));
+      localStorage.setItem(mapStorageKey, mapImg || "");
+    } catch (e) { toast("이 브라우저의 저장 공간이 부족합니다. 지도 이미지 크기를 줄여 주세요."); }
   }
   function save(silent) {
-    try {
-      localStorage.setItem("norvex.state", JSON.stringify(state));
-      localStorage.setItem("norvex.map", mapImg);
-    } catch (e) {
-      toast("이 브라우저의 저장 공간이 부족합니다. 이미지 크기를 줄여 주세요.");
-      return false;
-    }
+    if (!isGM()) { toast("세션 저장은 GM만 할 수 있습니다."); return false; }
     if (!cloudReady || !cloudClient || !roomIdFromLobby || !cloudUser) {
-      dirty = false; lastSaved = Date.now(); paintSave();
-      if (!silent) toast("이 기기에 저장했습니다. 방 연결 상태를 확인해 주세요.");
-      return true;
+      toast("방 연결이 완료되지 않아 클라우드 저장을 할 수 없습니다."); return false;
     }
     var version = ++cloudSaveVersion, snapshot;
-    try { snapshot = JSON.parse(JSON.stringify(state)); }
-    catch (e) { toast("게임 데이터를 정리하지 못해 저장하지 못했습니다."); return false; }
+    try {
+      snapshot = JSON.parse(JSON.stringify(state));
+      snapshot.__norvex_map_image = mapImg || "";
+    } catch (e) { toast("게임 데이터를 정리하지 못해 저장하지 못했습니다."); return false; }
     $("save-state").textContent = "클라우드 저장 중…";
     cloudSaveQueue = cloudSaveQueue.then(async function () {
       var result = await cloudClient.from("game_saves").upsert({
@@ -402,22 +406,30 @@ button.link:hover { color: var(--brass); background: none; }
       }, { onConflict: "room_id" });
       if (result.error) throw result.error;
       if (version === cloudSaveVersion) {
-        dirty = false; lastSaved = Date.now(); paintSave();
-        if (!silent) toast("클라우드에 저장했습니다 " + clock(lastSaved));
+        dirty = false; lastSaved = Date.now(); cacheRoomState(); paintSave();
+        if (!silent) toast("클라우드에 세션을 저장했습니다 " + clock(lastSaved));
       }
     }).catch(function (err) {
-      if (version === cloudSaveVersion) {
-        dirty = true; paintSave(); $("save-state").textContent = "클라우드 저장 실패";
-      }
+      if (version === cloudSaveVersion) { dirty = true; paintSave(); $("save-state").textContent = "클라우드 저장 실패"; }
       console.error("NORVEX cloud save:", err);
-      toast("클라우드 저장에 실패했습니다: " + (err && err.message ? err.message : "권한 또는 연결을 확인해 주세요."));
+      toast("클라우드 저장에 실패했습니다: " + (err && err.message ? err.message : "GM 저장 권한 또는 연결을 확인해 주세요."));
     });
     return true;
   }
-  function markDirty() { dirty = true; if (autosave) save(true); else paintSave(); }
+  function broadcastState() {
+    if (!cloudChannel || !cloudReady || applyingRemote) return;
+    var snapshot;
+    try { snapshot = JSON.parse(JSON.stringify(state)); snapshot.__norvex_map_image = mapImg || ""; }
+    catch (e) { return; }
+    cloudChannel.send({ type: "broadcast", event: "state", payload: { sender: cloudUser.id, data: snapshot } })
+      .then(function (r) { if (r && r !== "ok" && r.status && r.status !== "ok") console.warn("NORVEX broadcast:", r); });
+  }
+  function markDirty() {
+    dirty = true; cacheRoomState(); paintSave(); broadcastState();
+  }
   function commit() { markDirty(); render(); }
   function toast(t) { var el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2200); }
-  function isGM() { return ui.role === "GM"; }
+  function isGM() { return cloudRole === "gm"; }
   function me() { return state.players.filter(function (p) { return p.id === ui.role; })[0]; }
   function P(id) { return state.players.filter(function (p) { return p.id === id; })[0]; }
   function Z(id) { return state.zones.filter(function (z) { return z.id === id; })[0]; }
@@ -762,9 +774,14 @@ button.link:hover { color: var(--brass); background: none; }
 
   /* ---------- 상단 컨트롤 ---------- */
   function fillRole() {
-    var r = $("role"); r.replaceChildren(h("option", { value: "GM" }, "GM"));
-    state.players.forEach(function (p) { r.append(h("option", { value: p.id }, p.name + " (플레이어)")); });
-    r.value = ui.role; fillChatSelects();
+    var r = $("role"); r.replaceChildren();
+    if (isGM()) r.append(h("option", { value: "GM" }, "GM 관리 화면"));
+    state.players.forEach(function (p) { r.append(h("option", { value: p.id }, p.name + " (캐릭터)")); });
+    if (isGM() && ui.role === "GM") r.value = "GM";
+    else if (P(ui.role)) r.value = ui.role;
+    else r.value = state.players.length ? state.players[0].id : "GM";
+    ui.role = r.value;
+    fillChatSelects();
   }
   function fillChatSelects() {
     var sp = $("c-speaker"), to = $("c-to");
@@ -782,21 +799,17 @@ button.link:hover { color: var(--brass); background: none; }
   function setSpeaker(v) { ui.speaker = v; fillChatSelects(); render(); $("c-text").focus(); }
   $("c-speaker").addEventListener("change", function () { if (isGM()) { ui.speaker = this.value; render(); } });
   $("role").addEventListener("change", function () {
-    if (this.value === "GM" && !ui.gmOk) { this.value = ui.role; openGmLogin(); return; }
-    ui.role = this.value; if (!isGM()) { ui.mi = ui.role; ui.gmOk = false; } fillChatSelects(); closeModal(); render();
+    var next = this.value;
+    if (next === "GM" && !isGM()) { this.value = ui.role; return; }
+    if (next !== "GM" && !P(next)) { this.value = ui.role; return; }
+    ui.role = next;
+    if (!isGM() && cloudUser && roomIdFromLobby) {
+      try { localStorage.setItem(selectedCharacterKey(cloudUser.id), next); } catch (e) {}
+      if (cloudClient) cloudClient.rpc("set_my_selected_character", { p_room: roomIdFromLobby, p_character: next }).then(function (r) { if (r.error) console.warn("캐릭터 선택 서버 기록 실패:", r.error.message); });
+    }
+    if (!isGM()) ui.mi = ui.role;
+    fillChatSelects(); closeModal(); render();
   });
-  function openGmLogin() {
-    openModal("GM 로그인", function () {
-      var pw = h("input", { type: "password", id: "gm-pw", placeholder: "GM 비밀번호", autocomplete: "off" }), err = h("p", { class: "err" });
-      function go() {
-        if (pw.value === "lu3750") { ui.gmOk = true; ui.role = "GM"; $("role").value = "GM"; fillChatSelects(); closeModal(); render(); toast("GM으로 입장했습니다."); }
-        else { err.textContent = "비밀번호가 맞지 않습니다."; pw.select(); }
-      }
-      pw.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); });
-      setTimeout(function () { pw.focus(); }, 30);
-      return h("div", { class: "mbody", style: "padding:0" }, h("p", { class: "soft" }, "GM 화면은 비밀번호를 입력해야 열 수 있습니다."), h("label", {}, "비밀번호", pw), err, h("button", { onclick: go }, "입장"));
-    });
-  }
   $("chatform").addEventListener("submit", function (e) {
     e.preventDefault();
     var t = $("c-text").value.trim(); if (!t) return;
@@ -827,12 +840,7 @@ button.link:hover { color: var(--brass); background: none; }
   });
   paintMode();
   $("save-btn").addEventListener("click", function () { save(false); });
-  $("auto-save").addEventListener("change", function () {
-    autosave = this.checked;
-    try { localStorage.setItem("norvex.auto", autosave ? "1" : "0"); } catch (e) {}
-    if (autosave && dirty) save(true); else paintSave();
-    toast(autosave ? "변경할 때마다 자동으로 저장합니다." : "자동 저장을 껐습니다. 저장 버튼을 눌러야 저장됩니다.");
-  });
+  $("auto-save").addEventListener("change", function () { this.checked = false; toast("자동 저장은 꺼져 있습니다. 최종 저장은 GM이 세션 저장 버튼으로 진행합니다."); });
   document.addEventListener("keydown", function (e) { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(false); } });
   window.addEventListener("beforeunload", function (e) { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
   $("next-btn").addEventListener("click", nextSlot);
@@ -1079,7 +1087,7 @@ button.link:hover { color: var(--brass); background: none; }
         h("p", { class: "soft" }, can ? "입력하면 자동으로 저장됩니다. 파일 다운로드는 이 화면에서 지원되지 않아 복사 방식으로 대신합니다." : ""));
     }, true);
   }
-  function visibleTo(m, pid) { return !m.to || m.to === pid || m.authorId === pid || (ui.role === "GM" && pid === "GM"); }
+  function visibleTo(m, pid) { return !m.to || m.to === pid || m.authorId === pid || (isGM() && pid === "GM"); }
 
   function openSettings() {
     openModal("게임 설정", function () {
@@ -1293,55 +1301,103 @@ button.link:hover { color: var(--brass); background: none; }
 
   async function initCloudSave() {
     if (!roomIdFromLobby) {
-      roomBanner.textContent = "로비에서 방을 연 뒤 입장해 주세요. 현재는 이 브라우저에만 저장됩니다.";
-      return;
+      roomBanner.textContent = "로비에서 방을 연 뒤 입장해 주세요. 방에 연결되지 않은 상태에서는 게임을 진행할 수 없습니다.";
+      throw new Error("room_required");
     }
-    if (!window.supabase || !window.supabase.createClient) {
-      roomBanner.textContent = "Supabase 라이브러리를 불러오지 못했습니다. 인터넷 연결 후 새로고침해 주세요.";
-      return;
+    if (!window.supabase || !window.supabase.createClient) throw new Error("Supabase 라이브러리를 불러오지 못했습니다.");
+    cloudClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage }
+    });
+    var sessionResult = await cloudClient.auth.getSession();
+    if (sessionResult.error) throw sessionResult.error;
+    var session = sessionResult.data && sessionResult.data.session;
+    if (!session) {
+      var authResult = await cloudClient.auth.signInAnonymously();
+      if (authResult.error) throw authResult.error;
+      session = authResult.data.session;
+    }
+    if (!session || !session.user) throw new Error("로그인 정보를 확인할 수 없습니다.");
+    cloudUser = session.user;
+
+    var roomResult = await cloudClient.from("rooms").select("id,gm_id,name").eq("id", roomIdFromLobby).maybeSingle();
+    if (roomResult.error) throw roomResult.error;
+    if (!roomResult.data) throw new Error("방을 찾을 수 없습니다.");
+    var memberResult = await cloudClient.from("members").select("role,status,display_name,selected_character_id").eq("room_id", roomIdFromLobby).eq("user_id", cloudUser.id).maybeSingle();
+    if (memberResult.error) throw memberResult.error;
+    if (!memberResult.data || memberResult.data.status !== "approved") throw new Error("이 방에 승인된 멤버가 아닙니다.");
+    cloudMember = memberResult.data;
+    cloudRole = roomResult.data.gm_id === cloudUser.id && cloudMember.role === "gm" ? "gm" : (cloudMember.role === "player" ? "player" : null);
+    if (!cloudRole) throw new Error("방의 GM/플레이어 권한을 확인할 수 없습니다.");
+
+    var loadResult = await cloudClient.from("game_saves").select("game_data,updated_at").eq("room_id", roomIdFromLobby).maybeSingle();
+    if (loadResult.error) throw loadResult.error;
+    if (loadResult.data && loadResult.data.game_data && loadResult.data.game_data.players) {
+      var saved = loadResult.data.game_data;
+      mapImg = saved.__norvex_map_image || (localStorage.getItem(mapStorageKey) || "");
+      delete saved.__norvex_map_image;
+      state = saved;
+      dirty = false;
+      lastSaved = loadResult.data.updated_at ? new Date(loadResult.data.updated_at).getTime() : Date.now();
+    } else {
+      // 최초 세션은 브라우저의 샘플/초기 상태로 시작하며, GM이 직접 첫 저장을 합니다.
+      dirty = true;
+      lastSaved = null;
     }
     try {
-      cloudClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage }
-      });
-      var sessionResult = await cloudClient.auth.getSession();
-      if (sessionResult.error) throw sessionResult.error;
-      var session = sessionResult.data && sessionResult.data.session;
-      if (!session) {
-        var authResult = await cloudClient.auth.signInAnonymously();
-        if (authResult.error) throw authResult.error;
-        session = authResult.data.session;
-      }
-      if (!session || !session.user) throw new Error("로그인 정보를 확인할 수 없습니다.");
-      cloudUser = session.user;
+      localStorage.setItem(roomStorageKey, JSON.stringify(state));
+      localStorage.setItem(mapStorageKey, mapImg || "");
+    } catch (e) {}
 
-      var loadResult = await cloudClient.from("game_saves")
-        .select("game_data, updated_at").eq("room_id", roomIdFromLobby).maybeSingle();
-      if (loadResult.error) throw loadResult.error;
-
-      if (loadResult.data && loadResult.data.game_data && loadResult.data.game_data.players) {
-        state = loadResult.data.game_data;
-        try { localStorage.setItem("norvex.state", JSON.stringify(state)); } catch (e) {}
-        dirty = false;
-        lastSaved = loadResult.data.updated_at ? new Date(loadResult.data.updated_at).getTime() : Date.now();
-        cloudReady = true;
-        roomBanner.textContent = "클라우드 저장 연결 완료 · 서버에 저장된 세션을 불러왔습니다. 지도 이미지와 BGM은 아직 이 기기에만 저장됩니다.";
-      } else {
-        cloudReady = true;
-        roomBanner.textContent = "클라우드 저장 연결 완료 · 현재 게임 상태를 첫 저장본으로 등록합니다. 지도 이미지와 BGM은 아직 이 기기에만 저장됩니다.";
-        save(true);
+    if (cloudRole === "gm") ui.role = "GM";
+    else {
+      var savedCharacter = null;
+      try { savedCharacter = localStorage.getItem(selectedCharacterKey(cloudUser.id)); } catch (e) {}
+      if (!P(savedCharacter)) savedCharacter = cloudMember.selected_character_id;
+      ui.role = P(savedCharacter) ? savedCharacter : (state.players[0] ? state.players[0].id : "");
+      if (ui.role) {
+        try { localStorage.setItem(selectedCharacterKey(cloudUser.id), ui.role); } catch (e) {}
+        if (!P(savedCharacter)) {
+          var initialPick = await cloudClient.rpc("set_my_selected_character", { p_room: roomIdFromLobby, p_character: ui.role });
+          if (initialPick.error) console.warn("초기 캐릭터 선택 서버 기록 실패:", initialPick.error.message);
+        }
       }
-    } catch (err) {
-      cloudReady = false;
-      roomBanner.textContent = "클라우드 저장 연결 실패 · " + (err && err.message ? err.message : "로그인, 방 참가 승인, game_saves 권한을 확인해 주세요.") + " · 로컬 저장은 계속 사용할 수 있습니다.";
-      console.error("NORVEX cloud initialization:", err);
-      toast("클라우드 연결에 실패했습니다. 로컬 저장은 유지됩니다.");
     }
+
+    cloudChannel = cloudClient.channel("norvex:" + roomIdFromLobby, { config: { private: true } })
+      .on("broadcast", { event: "state" }, function (message) {
+        var payload = message && message.payload;
+        if (!payload || payload.sender === cloudUser.id || !payload.data || !payload.data.players) return;
+        applyingRemote = true;
+        try {
+          var incoming = payload.data;
+          mapImg = incoming.__norvex_map_image || "";
+          delete incoming.__norvex_map_image;
+          state = incoming;
+          dirty = true;
+          cacheRoomState();
+          fillRole();
+          render();
+          paintSave();
+        } finally { applyingRemote = false; }
+      })
+      .subscribe(function (status) {
+        if (status === "SUBSCRIBED") roomBanner.textContent = "방 연결 완료 · 실시간 진행 중 · 최종 세션 저장은 GM만 할 수 있습니다.";
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") roomBanner.textContent = "방은 연결됐지만 실시간 동기화 연결에 실패했습니다. Supabase Realtime 권한 SQL을 확인해 주세요.";
+      });
+    cloudReady = true;
+    fillRole();
+    roomBanner.textContent = "방 인증 완료 · " + (cloudRole === "gm" ? "GM" : "플레이어") + " · 실시간 동기화 연결 중";
   }
 
-  fillRole(); fillRole();
   initCloudSave().then(function () {
     paintTimer(); paintSave(); bgmLoad(); render();
+  }).catch(function (err) {
+    cloudReady = false; cloudRole = null;
+    roomBanner.textContent = "방 인증/연결 실패 · " + (err && err.message ? err.message : "Supabase 설정을 확인해 주세요.");
+    console.error("NORVEX initialization:", err);
+    $("role").replaceChildren(h("option", { value: "" }, "방 인증 필요"));
+    $("save-btn").hidden = true;
+    render();
   });
 })();
 </script>
