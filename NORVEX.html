@@ -428,6 +428,10 @@ button.link:hover { color: var(--brass); background: none; }
     dirty = true; cacheRoomState(); paintSave(); broadcastState();
   }
   function commit() { markDirty(); render(); }
+  function commitMapChange() {
+    commit();
+    if (isGM() && cloudReady) save(true);
+  }
   function toast(t) { var el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2200); }
   function isGM() { return cloudRole === "gm"; }
   function me() { return state.players.filter(function (p) { return p.id === ui.role; })[0]; }
@@ -575,13 +579,13 @@ button.link:hover { color: var(--brass); background: none; }
       e.preventDefault(); el.setPointerCapture(e.pointerId);
       var r = stage.getBoundingClientRect();
       function mv(ev) { p.mx = Math.max(0, Math.min(100, (ev.clientX - r.left) / r.width * 100)); p.my = Math.max(0, Math.min(100, (ev.clientY - r.top) / r.height * 100)); put(); }
-      function up() { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); commit(); }
+      function up() { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); commitMapChange(); }
       el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
     });
     el.addEventListener("keydown", function (e) {
       var d = { ArrowLeft: [-2, 0], ArrowRight: [2, 0], ArrowUp: [0, -2], ArrowDown: [0, 2] }[e.key];
       if (!d) return; e.preventDefault();
-      p.mx = Math.max(0, Math.min(100, p.mx + d[0])); p.my = Math.max(0, Math.min(100, p.my + d[1])); put(); markDirty();
+      p.mx = Math.max(0, Math.min(100, p.mx + d[0])); p.my = Math.max(0, Math.min(100, p.my + d[1])); put(); commitMapChange();
     });
     return el;
   }
@@ -601,7 +605,7 @@ button.link:hover { color: var(--brass); background: none; }
       h("span", { class: "mono soft" }, Math.round(ui.zoom * 100) + "%"),
       h("button", { class: "ghost sm", onclick: function () { ui.zoom = Math.min(3, ui.zoom + .2); render(); } }, "확대"),
       h("label", { class: "gm-only", style: "flex-direction:row;align-items:center" }, h("span", { class: "tag warn" }, "지도 업로드/교체"),
-        h("input", { type: "file", accept: "image/*", style: "width:150px", onchange: function () { readImg(this.files[0], function (d) { mapImg = d; commit(); toast("지도를 교체했습니다. 진행 상태는 그대로입니다."); }, MAPOPT); } })))));
+        h("input", { type: "file", accept: "image/*", style: "width:150px", onchange: function () { readImg(this.files[0], function (d) { mapImg = d; commitMapChange(); toast("지도를 교체했습니다. 모든 접속자에게 전송하고 클라우드에 저장합니다."); }, MAPOPT); } })))));
     var mw = h("div", { class: "mapwrap" });
     if (mapImg) {
       var stage = h("div", { class: "stage", style: "width:" + Math.round(ui.zoom * 100) + "%;--tk:" + (state.tokenSize || 44) + "px" }, h("img", { src: mapImg, alt: "현장 지도" }));
@@ -1122,8 +1126,8 @@ button.link:hover { color: var(--brass); background: none; }
     var nm = h("input", { placeholder: "새 구역 이름" });
     return h("div", { class: "mbody", style: "padding:0" },
       h("h3", {}, "지도 이미지"),
-      h("div", { class: "row" }, h("label", { style: "flex:1 1 220px" }, mapImg ? "지도 이미지 변경 (진행 상태는 그대로 유지)" : "지도 이미지 올리기", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { mapImg = d; commit(); refreshModal(); toast("지도를 바꿨습니다."); }, MAPOPT); } })),
-        mapImg ? h("button", { class: "ghost", onclick: function () { mapImg = ""; commit(); refreshModal(); } }, "지도 이미지 제거") : null),
+      h("div", { class: "row" }, h("label", { style: "flex:1 1 220px" }, mapImg ? "지도 이미지 변경 (진행 상태는 그대로 유지)" : "지도 이미지 올리기", h("input", { type: "file", accept: "image/*", onchange: function () { readImg(this.files[0], function (d) { mapImg = d; commitMapChange(); refreshModal(); toast("지도를 바꿨습니다."); }, MAPOPT); } })),
+        mapImg ? h("button", { class: "ghost", onclick: function () { mapImg = ""; commitMapChange(); refreshModal(); } }, "지도 이미지 제거") : null),
       h("h3", {}, "구역 이름과 상세 설명"),
       h("div", { class: "list" }, state.zones.map(function (z) {
         var ln = h("input", { value: z.name, onchange: function () { z.name = this.value || z.name; commit(); } });
