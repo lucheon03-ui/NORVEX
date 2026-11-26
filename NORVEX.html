@@ -400,14 +400,28 @@ button.link:hover { color: var(--brass); background: none; }
     } catch (e) { toast("게임 데이터를 정리하지 못해 저장하지 못했습니다."); return false; }
     $("save-state").textContent = "클라우드 저장 중…";
     cloudSaveQueue = cloudSaveQueue.then(async function () {
+      var savedAt = new Date().toISOString();
       var result = await cloudClient.from("game_saves").upsert({
         room_id: roomIdFromLobby, game_data: snapshot,
-        updated_by: cloudUser.id, updated_at: new Date().toISOString()
+        updated_by: cloudUser.id, updated_at: savedAt
       }, { onConflict: "room_id" });
       if (result.error) throw result.error;
+
       if (version === cloudSaveVersion) {
         dirty = false; lastSaved = Date.now(); cacheRoomState(); paintSave();
         if (!silent) toast("클라우드에 세션을 저장했습니다 " + clock(lastSaved));
+      }
+
+      // 큰 지도 이미지(base64)는 실시간 메시지에 싣지 않는다.
+      // DB 저장이 끝난 뒤 작은 알림만 보내고, 수신자는 저장본을 다시 읽는다.
+      if (cloudChannel && cloudReady) {
+        var notice = await cloudChannel.send({
+          type: "broadcast", event: "saved",
+          payload: { sender: cloudUser.id, updated_at: savedAt }
+        });
+        if (notice && notice !== "ok" && notice.status && notice.status !== "ok") {
+          console.warn("NORVEX saved notice:", notice);
+        }
       }
     }).catch(function (err) {
       if (version === cloudSaveVersion) { dirty = true; paintSave(); $("save-state").textContent = "클라우드 저장 실패"; }
@@ -419,10 +433,34 @@ button.link:hover { color: var(--brass); background: none; }
   function broadcastState() {
     if (!cloudChannel || !cloudReady || applyingRemote) return;
     var snapshot;
-    try { snapshot = JSON.parse(JSON.stringify(state)); snapshot.__norvex_map_image = mapImg || ""; }
+    try { snapshot = JSON.parse(JSON.stringify(state)); }
     catch (e) { return; }
+    // 토큰/게임 상태만 전송한다. 지도 이미지가 매번 포함되면 메시지 크기 제한에 걸릴 수 있다.
     cloudChannel.send({ type: "broadcast", event: "state", payload: { sender: cloudUser.id, data: snapshot } })
-      .then(function (r) { if (r && r !== "ok" && r.status && r.status !== "ok") console.warn("NORVEX broadcast:", r); });
+      .then(function (r) {
+        if (r && r !== "ok" && r.status && r.status !== "ok") console.warn("NORVEX broadcast:", r);
+      })
+      .catch(function (err) { console.error("NORVEX broadcast failed:", err); });
+  }
+
+  async function applyCloudSavedSnapshot() {
+    if (!cloudClient || !roomIdFromLobby) return;
+    var result = await cloudClient.from("game_saves")
+      .select("game_data,updated_at")
+      .eq("room_id", roomIdFromLobby)
+      .maybeSingle();
+    if (result.error) throw result.error;
+    if (!result.data || !result.data.game_data || !result.data.game_data.players) return;
+    var incoming = result.data.game_data;
+    mapImg = incoming.__norvex_map_image || "";
+    delete incoming.__norvex_map_image;
+    state = incoming;
+    dirty = false;
+    lastSaved = result.data.updated_at ? new Date(result.data.updated_at).getTime() : Date.now();
+    cacheRoomState();
+    fillRole();
+    render();
+    paintSave();
   }
   function markDirty() {
     dirty = true; cacheRoomState(); paintSave(); broadcastState();
@@ -1373,10 +1411,8 @@ button.link:hover { color: var(--brass); background: none; }
         if (!payload || payload.sender === cloudUser.id || !payload.data || !payload.data.players) return;
         applyingRemote = true;
         try {
-          var incoming = payload.data;
-          mapImg = incoming.__norvex_map_image || "";
-          delete incoming.__norvex_map_image;
-          state = incoming;
+          // state 이벤트에는 지도 이미지가 없으므로 기존 배경은 그대로 둔다.
+          state = payload.data;
           dirty = true;
           cacheRoomState();
           fillRole();
@@ -1384,13 +1420,41 @@ button.link:hover { color: var(--brass); background: none; }
           paintSave();
         } finally { applyingRemote = false; }
       })
-      .subscribe(function (status) {
-        if (status === "SUBSCRIBED") roomBanner.textContent = "방 연결 완료 · 실시간 진행 중 · 최종 세션 저장은 GM만 할 수 있습니다.";
-        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") roomBanner.textContent = "방은 연결됐지만 실시간 동기화 연결에 실패했습니다. Supabase Realtime 권한 SQL을 확인해 주세요.";
+      .on("broadcast", { event: "saved" }, async function (message) {
+        var payload = message && message.payload;
+        if (!payload || payload.sender === cloudUser.id) return;
+        try {
+          applyingRemote = true;
+          await applyCloudSavedSnapshot();
+        } catch (err) {
+          console.error("NORVEX remote save refresh:", err);
+          roomBanner.textContent = "실시간 알림은 받았지만 저장된 지도/상태를 불러오지 못했습니다: " + (err && err.message ? err.message : "권한을 확인해 주세요.");
+        } finally { applyingRemote = false; }
       });
-    cloudReady = true;
+
+    roomBanner.textContent = "방 인증 완료 · " + (cloudRole === "gm" ? "GM" : "플레이어") + " · 실시간 채널 연결 중";
+    await new Promise(function (resolve, reject) {
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        reject(new Error("Supabase Realtime 구독 응답 시간 초과"));
+      }, 15000);
+      cloudChannel.subscribe(function (status, err) {
+        if (status === "SUBSCRIBED" && !settled) {
+          settled = true; clearTimeout(timer);
+          cloudReady = true;
+          roomBanner.textContent = "방 연결 완료 · 실시간 동기화 연결됨 · GM 변경사항 공유 중";
+          resolve();
+        } else if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") && !settled) {
+          settled = true; clearTimeout(timer);
+          var detail = err && (err.message || err.toString()) ? (err.message || err.toString()) : status;
+          roomBanner.textContent = "실시간 동기화 연결 실패 · " + detail;
+          reject(new Error("Supabase Realtime " + status + (detail ? ": " + detail : "")));
+        }
+      });
+    });
     fillRole();
-    roomBanner.textContent = "방 인증 완료 · " + (cloudRole === "gm" ? "GM" : "플레이어") + " · 실시간 동기화 연결 중";
   }
 
   initCloudSave().then(function () {
